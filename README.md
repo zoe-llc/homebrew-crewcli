@@ -17,7 +17,7 @@ ruby scripts/import_release.rb check \
   --manifest test/fixtures/crewcli.distribution-release.v1.json \
   --output Formula/crewcli.rb
 brew style Formula/crewcli.rb
-brew audit --formula --strict Formula/crewcli.rb
+brew audit --formula --strict zoe-llc/crewcli/crewcli
 ```
 
 `import_release.rb`はlocal file以外を読まず、GitHub Appやnetwork credentialを所有しない。live manifest downloadは外部Activation gate後のworkflowが担当する。

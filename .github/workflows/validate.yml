@@ -59,4 +59,4 @@ jobs:
       - name: Check Formula style and policy
         run: |
           brew style Formula/crewcli.rb
-          brew audit --formula --strict Formula/crewcli.rb
+          brew audit --formula --strict zoe-llc/crewcli/crewcli
