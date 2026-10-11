@@ -24,6 +24,8 @@ jobs:
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
+        with:
+          token: ${{ github.token }}
 
       - name: Check Ruby syntax
         run: find lib scripts test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
