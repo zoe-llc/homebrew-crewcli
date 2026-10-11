@@ -1,0 +1,60 @@
+name: Validate Tap
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
+
+      - name: Check Ruby syntax
+        run: find lib scripts test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
+
+      - name: Run manifest and renderer contracts
+        run: |
+          ruby -Itest test/distribution_manifest_test.rb
+          ruby -Itest test/formula_renderer_test.rb
+          ruby -Itest test/import_release_test.rb
+
+      - name: Verify the checked-in Formula is deterministic
+        run: |
+          ruby scripts/import_release.rb check \
+            --config config/distribution.json \
+            --manifest test/fixtures/crewcli.distribution-release.v1.json \
+            --output Formula/crewcli.rb >/dev/null
+
+      - name: Reject committed credentials
+        run: |
+          ruby -e '
+            patterns = [
+              /gh[pousr]_[A-Za-z0-9_]{20,}/,
+              /github_pat_[A-Za-z0-9_]{20,}/,
+              /-----BEGIN [A-Z ]*PRIVATE KEY-----/
+            ]
+            files = Dir.glob("**/*", File::FNM_DOTMATCH).select { |path| File.file?(path) && !path.start_with?(".git/") }
+            offending = files.select { |path| patterns.any? { |pattern| File.binread(path).match?(pattern) } }
+            abort("credential-like bytes found in: #{offending.join(", ")}") unless offending.empty?
+          '
+
+      - name: Check Formula style and policy
+        run: |
+          brew style Formula/crewcli.rb
+          brew audit --formula --strict Formula/crewcli.rb
