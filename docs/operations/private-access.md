@@ -17,7 +17,7 @@ brew tap zoe-llc/crewcli git@github.com:zoe-llc/homebrew-crewcli.git
 Homebrewは2引数の`brew tap <user>/<repository> <URL>`でGitが扱えるSSH URLを利用できる。非公式Tapは実行可能なRubyを含むため、whole Tapではなく対象Formulaだけをtrustする。
 
 ```sh
-brew trust --formula zoe-llc/crewcli/crewcli
+brew trust --formula zoe-llc/crewcli/crewent
 ```
 
 参照: [Homebrew Taps](https://docs.brew.sh/Taps.html)、[Tap Trust](https://docs.brew.sh/Tap-Trust)、[GitHub SSO authentication](https://docs.github.com/en/enterprise-cloud%40latest/authentication/authenticating-with-single-sign-on)
@@ -35,7 +35,7 @@ Homebrewがprivate OCI bottleへ送るBasic authorization値をprocess内で作�
 
 ```sh
 export HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN="$(printf '%s' "${GITHUB_USER}:${GHCR_READ_PAT}" | base64 | tr -d '\n')"
-brew install zoe-llc/crewcli/crewcli
+brew install zoe-llc/crewcli/crewent
 unset HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN GHCR_READ_PAT
 ```
 
@@ -49,14 +49,17 @@ Formulaはbottleがない場合のconsumer source fallbackを停止する。`bre
 
 ## 4. runtimeへloginする
 
-インストール後の`crewcli login`はproduct runtime credentialを作る。これはTap Git read、GHCR read、GitHub Appのどれとも共有しない。
+インストール後の`crewent login`はproduct runtime credentialを作る。これはTap Git read、GHCR read、GitHub Appのどれとも共有しない。移行期間は`crewcli` commandも同じentry pointへの互換aliasとして提供する。
 
 ## 更新と削除
 
+旧`crewcli` Formulaを導入済みの端末でも、`brew update`がrootの`formula_renames.json`にある`crewcli`から`crewent`への直接renameを読み取る。旧Formulaを併存させず、そのまま新しい正式名をupgrade対象にする。
+
 ```sh
 brew update
-brew upgrade zoe-llc/crewcli/crewcli
-brew uninstall crewcli
+brew upgrade zoe-llc/crewcli/crewent
+brew list --formula crewent
+brew uninstall crewent
 brew untap zoe-llc/crewcli
 ```
 

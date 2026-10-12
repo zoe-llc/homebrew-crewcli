@@ -11,7 +11,7 @@ class ImportReleaseTest < Minitest::Test
 
   def test_renders_and_checks_only_local_contract_files
     Dir.mktmpdir("tap-import-") do |directory|
-      output = File.join(directory, "crewcli.rb")
+      output = File.join(directory, "crewent.rb")
       arguments = [
         "--config", File.join(ROOT, "config/distribution.json"),
         "--manifest", File.join(ROOT, "test/fixtures/crewcli.distribution-release.v1.json"),
@@ -43,7 +43,7 @@ class ImportReleaseTest < Minitest::Test
             "render",
             "--config", File.join(ROOT, "config/distribution.json"),
             "--manifest", linked_manifest,
-            "--output", File.join(directory, "crewcli.rb")
+            "--output", File.join(directory, "crewent.rb")
           ]
         )
       end

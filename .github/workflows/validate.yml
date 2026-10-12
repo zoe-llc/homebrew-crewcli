@@ -34,6 +34,7 @@ jobs:
         run: |
           ruby -Itest test/distribution_manifest_test.rb
           ruby -Itest test/formula_renderer_test.rb
+          ruby -Itest test/formula_renames_test.rb
           ruby -Itest test/import_release_test.rb
 
       - name: Verify the checked-in Formula is deterministic
@@ -41,7 +42,7 @@ jobs:
           ruby scripts/import_release.rb check \
             --config config/distribution.json \
             --manifest test/fixtures/crewcli.distribution-release.v1.json \
-            --output Formula/crewcli.rb >/dev/null
+            --output Formula/crewent.rb >/dev/null
 
       - name: Reject committed credentials
         run: |
@@ -58,5 +59,5 @@ jobs:
 
       - name: Check Formula style and policy
         run: |
-          brew style Formula/crewcli.rb
-          brew audit --formula --strict zoe-llc/crewcli/crewcli
+          brew style Formula/crewent.rb
+          brew audit --formula --strict zoe-llc/crewcli/crewent
