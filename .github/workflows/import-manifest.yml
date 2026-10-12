@@ -1,0 +1,57 @@
+# Manual: fetch distribution manifest from private zoe-llc/crewcli using CLI Distribution Reader App.
+# Secrets (set via crewcli: pnpm cli-distribution-reader:sync-tap-secrets):
+#   CLI_DISTRIBUTION_READER_APP_ID
+#   CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY
+#   CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID
+
+name: Import distribution manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: "Path in source repo (e.g. releases/download/cli-v0.1.0/distribution-release.json)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.CLI_DISTRIBUTION_READER_APP_ID }}
+          private-key: ${{ secrets.CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY }}
+          owner: zoe-llc
+          repositories: crewcli
+
+      - name: Download manifest from source repository
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          url="https://api.github.com/repos/zoe-llc/crewcli/contents/${MANIFEST_PATH}"
+          curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$url" \
+            | node -e "
+              const fs = require('fs');
+              const body = JSON.parse(fs.readFileSync(0, 'utf8'));
+              if (!body.content) throw new Error('manifest not found or not a file');
+              fs.writeFileSync('manifest.json', Buffer.from(body.content, 'base64'));
+            "
+          ruby -Itest test/distribution_manifest_test.rb
+          ruby scripts/import_release.rb \
+            --config config/distribution.json \
+            --manifest manifest.json \
+            --output /tmp/Formula.crewcli.rb
+          echo "Formula candidate written to /tmp/Formula.crewcli.rb (not committed by this workflow)."
