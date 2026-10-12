@@ -46,6 +46,7 @@ jobs:
           ruby -Itest test/assert_canary_matrix_test.rb
           ruby -Itest test/canary_workflow_test.rb
           ruby -Itest test/promotion_workflow_test.rb
+          ruby -Itest test/rename_rehearsal_test.rb
 
       - name: Verify the checked-in Formula is deterministic
         run: |
