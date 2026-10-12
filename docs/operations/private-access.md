@@ -47,6 +47,12 @@ Formulaはbottleがない場合のconsumer source fallbackを停止する。`bre
 
 `CLI Distribution Reader` GitHub App installation tokenはTapのimport workflowだけが使用する。権限はsource repositoryの`Contents: read`だけとし、利用者端末、Formula、release evidence、GHCR credentialへ渡さない。Task 4の`import_release.rb`はlocal manifest fileだけを入力にし、App tokenの発行やnetwork accessを持たない。
 
+source側のexact scope verifyと3件のrepository secret同期が完了した後だけ、Tapの
+`Import distribution manifest` manual workflowへexact SemVerを指定する。workflowは
+`cli-v<version>` Immutable Release、App slug、installation ID、manifest asset URLをfail-closedで
+検証し、runner temporary directoryへFormula候補を生成する。repository contents APIの任意path、
+source fallback、Formula commit、stable promotionは行わない。
+
 ## 4. runtimeへloginする
 
 インストール後の`crewent login`はproduct runtime credentialを作る。これはTap Git read、GHCR read、GitHub Appのどれとも共有しない。移行期間は`crewcli` commandも同じentry pointへの互換aliasとして提供する。

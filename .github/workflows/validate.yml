@@ -36,6 +36,8 @@ jobs:
           ruby -Itest test/formula_renderer_test.rb
           ruby -Itest test/formula_renames_test.rb
           ruby -Itest test/import_release_test.rb
+          ruby -Itest test/release_asset_test.rb
+          ruby -Itest test/import_manifest_workflow_test.rb
 
       - name: Verify the checked-in Formula is deterministic
         run: |
