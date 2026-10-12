@@ -11,7 +11,7 @@ class DistributionManifestTest < Minitest::Test
     "schema" => "crewcli.homebrew-distribution/v1",
     "releaseId" => "phase2-cli",
     "sourceRepository" => "zoe-llc/crewcli",
-    "formulaName" => "crewcli",
+    "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
     "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"
   }.freeze
@@ -27,8 +27,8 @@ class DistributionManifestTest < Minitest::Test
 
     assert_equal "phase2-cli", manifest.release_id
     assert_equal "0.1.0", manifest.version
-    assert_equal "@crewcli/cli", manifest.package_name
-    assert_equal ["crewcli"], manifest.commands
+    assert_equal "@crewent/cli", manifest.package_name
+    assert_equal ["crewent", "crewcli"], manifest.commands
     assert_equal ">=22", manifest.node_requirement
   end
 

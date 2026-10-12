@@ -9,7 +9,7 @@
 
 ## 初回提供前または初回canary失敗
 
-stable Formulaを提供状態へ進めない。端末上の候補を`brew uninstall crewcli`で削除し、必要なら`brew untap zoe-llc/crewcli`する。まだ直前stableがないため、rollback pointは「未提供状態」である。
+stable Formulaを提供状態へ進めない。端末上の候補を`brew uninstall crewent`で削除し、必要なら`brew untap zoe-llc/crewcli`する。まだ直前stableがないため、rollback pointは「未提供状態」である。
 
 ## 2版目以降
 
@@ -20,9 +20,10 @@ stable Formulaを提供状態へ進めない。端末上の候補を`brew uninst
 
 ```sh
 brew update
-brew reinstall zoe-llc/crewcli/crewcli
+brew reinstall zoe-llc/crewcli/crewent
+crewent --version
+crewent --help
 crewcli --version
-crewcli --help
 ```
 
 5. runtime A/B/Cとuninstall/reinstallを再確認し、4環境が揃った時点だけrollback完了とする。

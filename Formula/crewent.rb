@@ -3,10 +3,10 @@
 require "json"
 
 # Internal CLI distribution Formula.
-class Crewcli < Formula
+class Crewent < Formula
   desc "Internal CLI distribution"
   homepage "https://github.com/zoe-llc/crewcli"
-  url "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/crewcli-cli-0.1.0.tgz"
+  url "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/crewent-cli-0.1.0.tgz"
   sha256 "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"
   license :cannot_represent
 
@@ -23,7 +23,7 @@ class Crewcli < Formula
 
     metadata = JSON.parse((libexec/"package.json").read)
     bin_map = metadata.fetch("bin")
-    expected_commands = ["crewcli"]
+    expected_commands = ["crewent", "crewcli"]
     if bin_map.keys.sort != expected_commands.sort
       odie "package command set does not match the release manifest"
     end
@@ -42,7 +42,7 @@ class Crewcli < Formula
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/crewcli --version")
-    assert_match "Usage:", shell_output("#{bin}/crewcli --help")
+    assert_match version.to_s, shell_output("#{bin}/crewent --version")
+    assert_match "Usage:", shell_output("#{bin}/crewent --help")
   end
 end
