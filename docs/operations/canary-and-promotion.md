@@ -1,99 +1,90 @@
-# 4環境canaryとstable promotion
+# 3環境distribution canaryとstable promotion
 
 ## 状態
 
 workflowとfail-closed evidence contractは実装済みである。実行にはexact source Release、3 bottle、
-専用Hosted Product / Change Intent、platform別credential、Windows 11 + WSL2 runner、実行時間を含む
-source authorization recordが必要である。1つでも欠ける間はcanaryをdispatchせず、stable Formulaを
-変更しない。
+4件の共有read credential、実行時間を含むsource authorization recordが必要である。1つでも欠ける間は
+canaryをdispatchせず、stable Formulaを変更しない。
 
-## 固定する対象
+このworkflowはprivate Homebrew配布だけを検証する。Hosted、Product、Change Intent、Context Handoff、
+A/B/C、stale no-rebindはsource repositoryの製品canaryが独立して検証する。distribution canaryのPASSを
+製品canaryのPASSとして扱わない。
 
-`Verify exact private Homebrew consumers`へ次を一組として渡す。
+## distribution canary
 
-- version、source SHA、authorization SHA
-- 成功したbottle workflow run ID
-- production deploy SHAとquery/pathのないHTTPS origin
-- 専用Product slug、Product-scoped Change Intent Number
-- `zoe-llc/cli-distribution-canary`のcleanなexact commit SHA
+`Verify exact private Homebrew distribution`へ次の4値を一組として渡す。
 
-workflowはbottle runのActions API recordを先に読み、workflow path、`workflow_dispatch`、`main`、
-completed/successを検査する。artifact取得後はcandidateに閉じたrun ID、run attempt、workflow head SHAも
-API recordと照合し、別workflowや再実行由来のartifactを拒否する。その上で`release-inputs`と
-`bottle-candidate`からcandidate Formula、manifest、artifact、3 bottle digestを再計算する。source
-harnessは`CLI Distribution Reader`でsource SHAのtarballを取得して実行する。Tap側へsourceのwrite
-credentialは置かない。
+- exact SemVer
+- source SHA
+- authorization SHA
+- 成功したexact bottle workflow run ID
 
-## platform別secret
+preflight jobはbottle runのActions API recordを先に読み、workflow path、`workflow_dispatch`、`main`、
+completed / successを確認する。artifact取得後はcandidateのrun ID、attempt、head SHAをAPI recordと照合し、
+candidate Formula、bottle matrix、3 bottle digestを検証する。検証済みのcredential-free artifactだけを
+3 consumer jobへ渡す。
 
-suffixは`MACOS_ARM64`、`LINUX_X86_64`、`LINUX_ARM64`、`WINDOWS_WSL2`の4つである。各suffixに
-次をrepository secretとして設定する。値をworkflow input、artifact、log、Formulaへ入れない。
+consumer targetは次の3件で固定する。
 
-| prefix | credential | 権限 |
+| target | runner | bottle |
 | --- | --- | --- |
-| `CLI_TAP_READ_USER_` / `CLI_TAP_READ_TOKEN_` | private Tap Git read | `zoe-llc/homebrew-crewcli` Contents readだけのfine-grained token |
-| `CLI_GHCR_READ_USER_` / `CLI_GHCR_READ_TOKEN_` | private bottle read | GHCR `read:packages`だけのclassic PAT |
-| `CLI_CANARY_READ_USER_` / `CLI_CANARY_READ_TOKEN_` | canary Git/API read | `zoe-llc/cli-distribution-canary` Contents readだけのfine-grained token |
-| `CLI_RUNTIME_TOKEN_` | Crewent runtime | 対象canary userの短命access token。GitHub credentialと共有しない |
+| `macos-arm64` | `macos-15` | `arm64_sequoia` |
+| `linux-x86_64` | `ubuntu-24.04` | `x86_64_linux` |
+| `linux-arm64` | `ubuntu-24.04-arm` | `arm64_linux` |
 
-Readerの3 secretは既存の
-`CLI_DISTRIBUTION_READER_APP_ID`、`CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY`、
-`CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID`を使う。
+各jobは実OS / architectureを`uname`で確認し、read-only credentialでprivate Tapをcloneする。
+candidate FormulaをTapへ配置し、private GHCRから`--force-bottle`でinstallする。primary command、help、
+compatibility alias、uninstall、reinstall、clean rollbackを確認する。source buildやpublic registryへ
+fallbackしない。
 
-## runner
+3件すべてが2時間以内のfresh PASSで、同じcandidate / producer / workflow identityを持つ場合だけ
+`distribution-canary-evidence` artifactを生成する。missing、duplicate、N/A、identity drift、secret様文字列は
+closed schemaが拒否する。
 
-macOS ARM64、Linux x86_64、Linux ARM64は固定GitHub-hosted labelを使う。Windows consumerは
-Windows 11上のWSL2内にrunner serviceを置き、次のlabelをすべて付ける。
+## 共有read secret
 
-```text
-self-hosted,windows,x64,wsl2,cli-wsl2-canary
-```
+distribution canaryは次の4 repository secretだけを使う。OS別suffix、runtime token、canary repository
+token、Distribution Reader App tokenは渡さない。
 
-runnerはcanary専用のclean consumerとし、事前の`crewent` install、Tap、Contextを残さない。
-workflowはlabelを証拠にせず、各jobでkernelとCPU architectureを実測する。WSL2はLinux kernel releaseの
-`microsoft-standard-WSL2`と`powershell.exe`から取得したWindows build 22000以上を両方要求する。
-このattestationがclosed lifecycle evidenceと一致しない場合はmatrixを作らない。workflowの最後にも
-uninstall / untapするが、失敗後はownerがrunnerを再imageしてから再実行する。
+| secret | 用途 | 最小権限 |
+| --- | --- | --- |
+| `CLI_TAP_READ_USER` | private Tap cloneのusername | 値自体は権限を持たない |
+| `CLI_TAP_READ_TOKEN` | private Tap clone | `zoe-llc/homebrew-crewcli` Contents read |
+| `CLI_GHCR_READ_USER` | private GHCR Basic authのusername | 値自体は権限を持たない |
+| `CLI_GHCR_READ_TOKEN` | exact bottle pull | `read:packages` |
 
-## A/BからCへの手動境界
+credentialはnetwork operationのstepだけへ注入し、URL、Formula、artifact、evidenceへ保存しない。
+CI用credentialを社員端末へ配布しない。
 
-1. exact dispatchを行う。4 jobはprivate Tap認証、private GHCR bottle install、`--version`、`--help`、
-   compatibility aliasを検証する。A/Bの直前にReader Appでauthorization SHA上の承認recordと現在の
-   `develop` ancestryを取り直し、承認窓内の場合だけHosted loginとA/Bを実行する。
-2. `canary-ab-<target>` artifactが4件揃い、同じSession / handoff pinであることを確認する。
-3. source authorization window内で、専用Productに新しいPublished Revisionを正規操作で公開する。
-   D1 rowを直接変更しない。
-4. `zoe-llc/cli-distribution-canary`のdispatch時canary SHAへ、次のlightweight tagを作る。
+## Windows / WSL2
 
-   ```text
-   cli-canary-stale-ready-<GitHub Actions run ID>
-   ```
+Windows 11 + WSL2は初回stable promotionのblocking targetではない。現在は未検証であり、Windows対応済みと
+表示しない。実利用要件が生じた場合は、3 target distribution canaryや製品canaryへ混ぜず、installと
+filesystem lifecycleだけを確認する独立compatibility workflowとして追加する。
 
-5. jobはtagがexact canary SHAを指すことだけを最大60分待つ。Cの直前にも承認recordとancestryを
-   取り直し、承認窓内の場合だけCのexit 3 / stale no-rebindを確認する。
-6. 各platformでupgrade、uninstall、reinstall、初回rollback（clean uninstall）を行う。
-7. 4件すべてfresh PASSの場合だけ`canary-evidence` artifactが生成される。N/A、missing、stale、identity
-   driftはmatrixにならない。
+## stable promotion
 
-## promotion
+`Open exact stable promotion pull request`へversion、source SHA、authorization SHA、bottle run ID、
+distribution canary run IDを渡す。
 
-`Open exact stable promotion pull request`へversion、source / authorization SHA、bottle run ID、canary run
-IDを渡す。workflowはbottle / canary両runのpath、event、branch、success、head SHA、attemptをActions API
-recordと照合し、candidate Formula hashとfresh 4環境matrixを再検証し、source authorizationをcontent
-write直前に再確認する。その後だけ書込credentialを一時的に注入してpromotion branchをpushする。
+1. read-only `verify` jobが両runのpath、event、branch、success、head SHA、attemptをActions API recordと
+   照合する。
+2. candidate Formula hashと3 targetのfresh closed matrixを再計算し、元のmatrixと一致する場合だけ
+   credential-free `verified-promotion` artifactを作る。
+3. `promote` jobがcandidate Formula、distribution matrix、bottle candidate metadataだけをstageする。
+4. content write直前にfresh `CLI Distribution Reader` installation tokenを発行し、source authorization
+   recordと現在の`develop` ancestryを再検証する。
+5. 一度だけpromotion branchをpushし、exact commitへ`validate.yml`を明示dispatchする。同じhead SHAの
+   runがsuccessの場合だけ日本語PRを作る。
 
-`GITHUB_TOKEN`によるpushでは通常のpush/PR triggerが抑止されるため、workflowはpushしたexact commitへ
-`validate.yml`を明示dispatchし、同じhead SHAのrunがsuccessになるまで待つ。成功後にだけ日本語PRを作る。
-checkout時やFormula / evidence検証中にwrite credentialをGit設定へ保存しない。
-
-workflowはPRをmergeしない。CIと差分を確認して人がmergeするまでstable Formulaは変わらない。
+workflowはPRをmergeしない。製品canary証拠と差分を人が確認してmergeするまでstable Formulaは変わらない。
 npm publish / dist-tag、source Release、tag、GHCR blobは変更しない。
 
 ## 失敗時
 
-- A/B前の失敗: credential scope、candidate identity、runner cleanlinessを境界ごとに確認する。
-- A/B後の失敗: raw outputを保存せず、run URLとsanitized failureだけを残す。stale-ready tagは再利用しない。
-- Cまたはlifecycle失敗: promotionしない。candidate installを削除し、必要ならrunnerを再imageする。
-- promotion失敗: branch / PRが作られる前なら再承認後に新run、作成後ならPRをcloseして新runを使う。
+- preflight失敗: run identity、candidate digest、artifact retentionを確認し、別runのartifactで代替しない。
+- consumer失敗: targetのTap / GHCR credentialと実platformを確認し、public/source fallbackへ切り替えない。
+- matrix失敗: missing target、freshness、identity driftを修正し、新しいrun IDで全3件を再実行する。
+- promotion失敗: PR作成前なら再承認後に新runを使う。PR作成後ならそのPRをcloseし、新しいrunから作り直す。
 
 rollbackは[Rollback](rollback.md)に従い、Release assetやbottleを削除しない。

@@ -4,7 +4,7 @@
 
 この手順はInternal Activation後のemployee向け契約である。2026-10-12時点ではbottleとGHCR packageが未作成で、Gate Cも`BLOCKED`のため、まだインストールを実行しない。
 
-認証は1個の万能tokenへ集約しない。Tap Git read、GHCR read、manifest read、Crew CLI runtime loginは別の境界として扱う。npm account、npm token、npm Teamsは使わない。
+認証は1個の万能tokenへ集約しない。Tap Git read、GHCR read、manifest read、Crew CLI runtime loginは別の境界として扱う。npm account、npm token、npm Teamsは使わない。CIのdistribution canaryもTap / GHCR用の4件の共有read secretだけを使い、社員用credentialやruntime credentialと共有しない。
 
 ## 1. private Tapを取得する
 
@@ -57,10 +57,9 @@ source fallback、Formula commit、stable promotionは行わない。
 
 インストール後の`crewent login`はproduct runtime credentialを作る。これはTap Git read、GHCR read、GitHub Appのどれとも共有しない。移行期間は`crewcli` commandも同じentry pointへの互換aliasとして提供する。
 
-自動canaryではOS secure storeを前提にせず、platform専用の短命tokenを
-`CREWCLI_CANARY_ACCESS_TOKEN`としてharnessだけへ渡す。harnessはinstalled CLI子processに限って
-`CREWCLI_ACCESS_TOKEN`へ写し、Git preflightやevidenceへ渡さない。secret名と実行手順は
-[4環境canaryとstable promotion](canary-and-promotion.md)を参照する。
+Homebrew distribution canaryはloginやruntime APIを実行せず、runtime credentialを受け取らない。
+Hosted、Product、Change Intent、Context Handoffを確認する製品canaryはsource repositoryが独立して所有する。
+配布側のsecret名と実行手順は[3環境distribution canaryとstable promotion](canary-and-promotion.md)を参照する。
 
 ## 更新と削除
 

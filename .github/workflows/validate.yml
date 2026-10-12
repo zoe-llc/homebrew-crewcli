@@ -30,7 +30,7 @@ jobs:
       - name: Check Ruby syntax
         run: find lib scripts test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
 
-      - name: Run manifest and renderer contracts
+      - name: Run all repository contracts
         run: |
           ruby -Itest test/distribution_manifest_test.rb
           ruby -Itest test/formula_renderer_test.rb

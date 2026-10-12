@@ -4,7 +4,9 @@ Crewent CLIのprivate Homebrew Tapである。provider-neutralなrelease manifes
 
 ## 現在の状態
 
-2026-10-12時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import、3 target bottle build/publish contract、4環境consumer canary、stable promotion PR contractは実装済みである。Distribution Reader credentialは設定済みだが、source Release、private GHCR bottle、platform別credential、Windows 11 + WSL2 runner、実canaryは未実行であり、employee向け提供は開始していない。
+2026-10-12時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import、3 target bottle build/publish contract、3環境distribution canary、stable promotion PR contractは実装済みである。Distribution Reader credentialは設定済みだが、source Release、private GHCR bottle、4件の共有read credential、実canaryは未実行であり、employee向け提供は開始していない。
+
+Homebrew側はmacOS ARM64、Linux x86_64、Linux ARM64のinstall lifecycleだけを証明する。Hosted、Product、Change Intent、Context Handoffを検証するCrewent製品canaryはsource repositoryが独立して所有する。Windows / WSL2は未検証であり、対応済みとは扱わない。
 
 ## 検証
 
