@@ -74,13 +74,14 @@ module CliDistribution
       Contract.equal(value["releaseId"], "phase2-cli", "config.releaseId")
       Contract.pattern(value["sourceRepository"], Contract::REPOSITORY, "config.sourceRepository")
       Contract.pattern(value["formulaName"], Contract::FORMULA, "config.formulaName")
-      Contract.pattern(value["tap"], Contract::REPOSITORY, "config.tap")
-      Contract.safe_https(
+      tap = Contract.pattern(value["tap"], Contract::REPOSITORY, "config.tap")
+      bottle_root = Contract.safe_https(
         value["bottleRoot"],
         "ghcr.io",
         %r{\A/v2/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z},
         "config.bottleRoot"
       )
+      Contract.equal(bottle_root, "https://ghcr.io/v2/#{tap}", "config.bottleRoot")
       new(value)
     end
 

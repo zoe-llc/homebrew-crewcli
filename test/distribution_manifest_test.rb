@@ -13,13 +13,13 @@ class DistributionManifestTest < Minitest::Test
     "sourceRepository" => "zoe-llc/crewcli",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
-    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"
+    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
   }.freeze
   ALTERNATE_CONFIG = CURRENT_CONFIG.merge(
     "sourceRepository" => "zoe-llc/sample-cli",
     "formulaName" => "sample-cli",
     "tap" => "zoe-llc/sample-cli",
-    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-sample-cli"
+    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/sample-cli"
   ).freeze
 
   def test_parses_closed_provider_neutral_manifest
@@ -85,8 +85,9 @@ class DistributionManifestTest < Minitest::Test
       CURRENT_CONFIG.merge("releaseId" => "crewcli"),
       CURRENT_CONFIG.merge("formulaName" => "../crewcli"),
       CURRENT_CONFIG.merge("tap" => "crewcli"),
-      CURRENT_CONFIG.merge("bottleRoot" => "https://token@ghcr.io/v2/zoe-llc/homebrew-crewcli"),
-      CURRENT_CONFIG.merge("bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli?token=secret")
+      CURRENT_CONFIG.merge("bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"),
+      CURRENT_CONFIG.merge("bottleRoot" => "https://token@ghcr.io/v2/zoe-llc/crewcli"),
+      CURRENT_CONFIG.merge("bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli?token=secret")
     ]
 
     invalid_values.each do |value|

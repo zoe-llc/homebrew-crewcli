@@ -11,7 +11,7 @@ class ReleaseAssetTest < Minitest::Test
     "sourceRepository" => "zoe-llc/crewcli",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
-    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"
+    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
   }.freeze
 
   def test_selects_the_exact_manifest_asset_from_an_immutable_release

@@ -38,6 +38,11 @@ jobs:
           ruby -Itest test/import_release_test.rb
           ruby -Itest test/release_asset_test.rb
           ruby -Itest test/import_manifest_workflow_test.rb
+          ruby -Itest test/verify_activation_window_test.rb
+          ruby -Itest test/verify_release_bundle_test.rb
+          ruby -Itest test/assert_bottle_matrix_test.rb
+          ruby -Itest test/assert_ghcr_readback_test.rb
+          ruby -Itest test/bottle_workflow_test.rb
 
       - name: Verify the checked-in Formula is deterministic
         run: |

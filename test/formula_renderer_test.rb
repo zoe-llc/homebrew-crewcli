@@ -13,13 +13,13 @@ class FormulaRendererTest < Minitest::Test
     "sourceRepository" => "zoe-llc/crewcli",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
-    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"
+    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
   }.freeze
   ALTERNATE_CONFIG = CURRENT_CONFIG.merge(
     "sourceRepository" => "zoe-llc/sample-cli",
     "formulaName" => "sample-cli",
     "tap" => "zoe-llc/sample-cli",
-    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-sample-cli"
+    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/sample-cli"
   ).freeze
 
   def test_renders_deterministic_bottle_build_only_formula

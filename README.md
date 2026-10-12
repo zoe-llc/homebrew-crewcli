@@ -4,7 +4,7 @@ Crewent CLIのprivate Homebrew Tapである。provider-neutralなrelease manifes
 
 ## 現在の状態
 
-2026-10-12時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import workflowは実装済みだが、Distribution Reader credential、private GHCR bottle、4環境canaryは未設定であり、employee向け提供は開始していない。
+2026-10-12時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import、3 target bottle build/publish contractは実装済みである。Distribution Reader credentialは設定済みだが、source Release、private GHCR bottle、4環境canaryは未実行であり、employee向け提供は開始していない。
 
 ## 検証
 
@@ -15,6 +15,10 @@ ruby -Itest test/formula_renames_test.rb
 ruby -Itest test/import_release_test.rb
 ruby -Itest test/release_asset_test.rb
 ruby -Itest test/import_manifest_workflow_test.rb
+ruby -Itest test/verify_activation_window_test.rb
+ruby -Itest test/verify_release_bundle_test.rb
+ruby -Itest test/assert_bottle_matrix_test.rb
+ruby -Itest test/bottle_workflow_test.rb
 ruby scripts/import_release.rb check \
   --config config/distribution.json \
   --manifest test/fixtures/crewcli.distribution-release.v1.json \
