@@ -19,8 +19,8 @@ on:
         description: Successful exact bottle workflow run ID
         required: true
         type: string
-      canaryRunId:
-        description: Successful four-platform canary workflow run ID
+      distributionCanaryRunId:
+        description: Successful three-target distribution canary run ID
         required: true
         type: string
 
@@ -35,14 +35,13 @@ env:
   HOMEBREW_NO_AUTO_UPDATE: "1"
 
 jobs:
-  promote:
+  verify:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
-      actions: write
-      contents: write
-      pull-requests: write
+      actions: read
+      contents: read
     steps:
       - name: Validate exact promotion coordinates
         env:
@@ -50,7 +49,7 @@ jobs:
           SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
           BOTTLE_RUN_ID: ${{ inputs.bottleRunId }}
-          CANARY_RUN_ID: ${{ inputs.canaryRunId }}
+          DISTRIBUTION_CANARY_RUN_ID: ${{ inputs.distributionCanaryRunId }}
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
@@ -58,30 +57,29 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$AUTHORIZATION_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$BOTTLE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          [[ "$CANARY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$DISTRIBUTION_CANARY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
 
-      - name: Check out the exact Tap workflow revision
+      - name: Check out the exact Tap workflow revision without write credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Fetch and preflight the exact producer workflow runs
         env:
           GH_TOKEN: ${{ github.token }}
           BOTTLE_RUN_ID: ${{ inputs.bottleRunId }}
-          CANARY_RUN_ID: ${{ inputs.canaryRunId }}
+          DISTRIBUTION_CANARY_RUN_ID: ${{ inputs.distributionCanaryRunId }}
         run: |
           set -euo pipefail
           gh api "repos/zoe-llc/homebrew-crewcli/actions/runs/${BOTTLE_RUN_ID}" > "$RUNNER_TEMP/bottle-run.json"
-          gh api "repos/zoe-llc/homebrew-crewcli/actions/runs/${CANARY_RUN_ID}" > "$RUNNER_TEMP/canary-run.json"
+          gh api "repos/zoe-llc/homebrew-crewcli/actions/runs/${DISTRIBUTION_CANARY_RUN_ID}" > "$RUNNER_TEMP/distribution-canary-run.json"
           jq -e --argjson runId "$BOTTLE_RUN_ID" \
             '.id == $runId and .path == ".github/workflows/bottle.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .status == "completed" and .conclusion == "success"' \
             "$RUNNER_TEMP/bottle-run.json"
-          jq -e --argjson runId "$CANARY_RUN_ID" \
+          jq -e --argjson runId "$DISTRIBUTION_CANARY_RUN_ID" \
             '.id == $runId and .path == ".github/workflows/canary.yml" and .event == "workflow_dispatch" and .head_branch == "main" and .status == "completed" and .conclusion == "success"' \
-            "$RUNNER_TEMP/canary-run.json"
+            "$RUNNER_TEMP/distribution-canary-run.json"
 
       - name: Download the exact bottle candidate
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
@@ -92,80 +90,123 @@ jobs:
           repository: zoe-llc/homebrew-crewcli
           run-id: ${{ inputs.bottleRunId }}
 
-      - name: Download the source authorization inputs
+      - name: Download the exact distribution canary evidence
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          name: release-inputs
-          path: ${{ runner.temp }}/source-release
+          name: distribution-canary-evidence
+          path: ${{ runner.temp }}/distribution-canary-evidence
           github-token: ${{ github.token }}
           repository: zoe-llc/homebrew-crewcli
-          run-id: ${{ inputs.bottleRunId }}
+          run-id: ${{ inputs.distributionCanaryRunId }}
 
-      - name: Download the exact four-platform canary evidence
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
-        with:
-          name: canary-evidence
-          path: ${{ runner.temp }}/canary-evidence
-          github-token: ${{ github.token }}
-          repository: zoe-llc/homebrew-crewcli
-          run-id: ${{ inputs.canaryRunId }}
-
-      - name: Revalidate candidate and all four fresh canaries
+      - name: Revalidate the exact candidate and three fresh distribution targets
         env:
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
           BOTTLE_RUN_ID: ${{ inputs.bottleRunId }}
-          CANARY_RUN_ID: ${{ inputs.canaryRunId }}
+          DISTRIBUTION_CANARY_RUN_ID: ${{ inputs.distributionCanaryRunId }}
         run: |
           set -euo pipefail
           candidate="$RUNNER_TEMP/bottle-candidate/metadata/candidate.json"
           formula="$RUNNER_TEMP/bottle-candidate/Formula/crewent.rb"
-          matrix="$RUNNER_TEMP/bottle-candidate/metadata/bottle-matrix.json"
-          expected="$RUNNER_TEMP/canary-evidence/expected.json"
+          bottle_matrix="$RUNNER_TEMP/bottle-candidate/metadata/bottle-matrix.json"
+          evidence_root="$RUNNER_TEMP/distribution-canary-evidence"
+          expected="$evidence_root/expected.json"
+          original_matrix="$evidence_root/distribution-canary-matrix.json"
+          for path in "$candidate" "$formula" "$bottle_matrix" "$expected" "$original_matrix"; do
+            test -f "$path"
+            test ! -L "$path"
+          done
+          jq -e '.schema == "crewcli.homebrew-distribution-canary-matrix/v1" and (.targets | length == 3)' \
+            "$original_matrix"
           test "$(jq -c 'keys | sort' "$candidate")" = '["artifactSha256","authorizationSha","bottleMatrixSha256","bottleRunAttempt","bottleRunId","candidateFormulaSha256","manifestSha256","schema","sourceFormulaSha256","sourceSha","tapWorkflowSha","version","workflowBranch","workflowEvent","workflowPath"]'
           jq -e \
-            --arg version "$VERSION" --arg sourceSha "$SOURCE_SHA" --arg authorizationSha "$AUTHORIZATION_SHA" \
-            --arg bottleRunId "$BOTTLE_RUN_ID" --arg canaryRunId "$CANARY_RUN_ID" \
-            '.version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and .workflowRunId == $canaryRunId' \
-            "$expected"
-          jq -e \
-            --arg version "$VERSION" --arg sourceSha "$SOURCE_SHA" --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg version "$VERSION" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
             --arg bottleRunId "$BOTTLE_RUN_ID" \
             '.schema == "crewcli.homebrew-bottle-candidate/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and .workflowPath == ".github/workflows/bottle.yml" and .workflowEvent == "workflow_dispatch" and .workflowBranch == "main"' \
             "$candidate"
           jq -e \
-            --arg tapWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
+            --arg version "$VERSION" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg bottleRunId "$BOTTLE_RUN_ID" \
+            --arg distributionCanaryRunId "$DISTRIBUTION_CANARY_RUN_ID" \
+            --arg artifactSha256 "$(jq -r .artifactSha256 "$candidate")" \
+            --arg manifestSha256 "$(jq -r .manifestSha256 "$candidate")" \
+            --arg formulaSha256 "$(jq -r .candidateFormulaSha256 "$candidate")" \
+            --arg bottleMatrixSha256 "$(jq -r .bottleMatrixSha256 "$candidate")" \
+            '.schema == "crewcli.homebrew-distribution-canary-expected/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and .workflowRunId == $distributionCanaryRunId and .artifactSha256 == $artifactSha256 and .manifestSha256 == $manifestSha256 and .formulaSha256 == $formulaSha256 and .bottleMatrixSha256 == $bottleMatrixSha256' \
+            "$expected"
+          jq -e \
+            --arg bottleWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
             --argjson bottleRunAttempt "$(jq -r .bottleRunAttempt "$candidate")" \
             --argjson bottleRunId "$BOTTLE_RUN_ID" \
-            '.id == $bottleRunId and .head_sha == $tapWorkflowSha and .run_attempt == $bottleRunAttempt' \
+            '.id == $bottleRunId and .head_sha == $bottleWorkflowSha and .run_attempt == $bottleRunAttempt' \
             "$RUNNER_TEMP/bottle-run.json"
           jq -e \
-            --arg tapWorkflowSha "$(jq -r .tapWorkflowSha "$expected")" \
+            --arg workflowSha "$(jq -r .workflowSha "$expected")" \
             --argjson workflowRunAttempt "$(jq -r .workflowRunAttempt "$expected")" \
-            --argjson canaryRunId "$CANARY_RUN_ID" \
-            '.id == $canaryRunId and .head_sha == $tapWorkflowSha and .run_attempt == $workflowRunAttempt' \
-            "$RUNNER_TEMP/canary-run.json"
+            --argjson distributionCanaryRunId "$DISTRIBUTION_CANARY_RUN_ID" \
+            '.id == $distributionCanaryRunId and .head_sha == $workflowSha and .run_attempt == $workflowRunAttempt' \
+            "$RUNNER_TEMP/distribution-canary-run.json"
           test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$formula")" = "$(jq -r .candidateFormulaSha256 "$candidate")"
-          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$matrix")" = "$(jq -r .bottleMatrixSha256 "$candidate")"
+          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$bottle_matrix")" = "$(jq -r .bottleMatrixSha256 "$candidate")"
+          mkdir -p "$RUNNER_TEMP/verified-promotion/Formula" "$RUNNER_TEMP/verified-promotion/docs/verification"
           ruby scripts/assert_canary_matrix.rb matrix \
             --expected "$expected" \
-            --output "$RUNNER_TEMP/canary-evidence/revalidated-canary-matrix.json" \
-            "$RUNNER_TEMP/canary-evidence/targets/macos-arm64.json" \
-            "$RUNNER_TEMP/canary-evidence/targets/linux-x86_64.json" \
-            "$RUNNER_TEMP/canary-evidence/targets/linux-arm64.json" \
-            "$RUNNER_TEMP/canary-evidence/targets/windows-wsl2.json"
+            --output "$RUNNER_TEMP/verified-promotion/docs/verification/distribution-canary-${VERSION}.json" \
+            "$evidence_root/targets/macos-arm64.json" \
+            "$evidence_root/targets/linux-x86_64.json" \
+            "$evidence_root/targets/linux-arm64.json"
+          jq -S 'del(.createdAt)' "$original_matrix" > "$RUNNER_TEMP/original-matrix.json"
+          jq -S 'del(.createdAt)' "$RUNNER_TEMP/verified-promotion/docs/verification/distribution-canary-${VERSION}.json" > "$RUNNER_TEMP/revalidated-matrix.json"
+          cmp "$RUNNER_TEMP/original-matrix.json" "$RUNNER_TEMP/revalidated-matrix.json"
+          cp "$formula" "$RUNNER_TEMP/verified-promotion/Formula/crewent.rb"
+          cp "$candidate" "$RUNNER_TEMP/verified-promotion/docs/verification/bottle-candidate-${VERSION}.json"
 
-      - name: Stage only the exact stable Formula and sanitized evidence
+      - name: Upload the credential-free verified promotion payload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-promotion
+          path: ${{ runner.temp }}/verified-promotion
+          if-no-files-found: error
+          retention-days: 1
+
+  promote:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out the exact Tap workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the verified promotion payload
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: verified-promotion
+          path: ${{ runner.temp }}/verified-promotion
+
+      - name: Stage only the exact Formula and credential-free evidence
         env:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          cp "$RUNNER_TEMP/bottle-candidate/Formula/crewent.rb" Formula/crewent.rb
-          cp "$RUNNER_TEMP/canary-evidence/revalidated-canary-matrix.json" "docs/verification/canary-${VERSION}.json"
-          cp "$RUNNER_TEMP/bottle-candidate/metadata/candidate.json" "docs/verification/bottle-candidate-${VERSION}.json"
-          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' Formula/crewent.rb)" = "$(jq -r .formulaSha256 "$RUNNER_TEMP/canary-evidence/expected.json")"
-          if git diff --exit-code -- Formula/crewent.rb "docs/verification/canary-${VERSION}.json" "docs/verification/bottle-candidate-${VERSION}.json"; then
+          cp "$RUNNER_TEMP/verified-promotion/Formula/crewent.rb" Formula/crewent.rb
+          cp "$RUNNER_TEMP/verified-promotion/docs/verification/distribution-canary-${VERSION}.json" "docs/verification/distribution-canary-${VERSION}.json"
+          cp "$RUNNER_TEMP/verified-promotion/docs/verification/bottle-candidate-${VERSION}.json" "docs/verification/bottle-candidate-${VERSION}.json"
+          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' Formula/crewent.rb)" = "$(jq -r .identity.formulaSha256 "docs/verification/distribution-canary-${VERSION}.json")"
+          if git diff --exit-code -- Formula/crewent.rb && test -z "$(git status --porcelain -- "docs/verification/distribution-canary-${VERSION}.json" "docs/verification/bottle-candidate-${VERSION}.json")"; then
             echo "promotion produced no stable change" >&2
             exit 1
           fi
@@ -190,11 +231,11 @@ jobs:
           git switch -c "$branch"
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add Formula/crewent.rb "docs/verification/canary-${VERSION}.json" "docs/verification/bottle-candidate-${VERSION}.json"
+          git add Formula/crewent.rb "docs/verification/distribution-canary-${VERSION}.json" "docs/verification/bottle-candidate-${VERSION}.json"
           git commit -m "promote: Crewent CLI ${VERSION}"
           echo "PROMOTION_BRANCH=$branch" >> "$GITHUB_ENV"
 
-      - name: Create exact source read token
+      - name: Create a fresh exact source read token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -204,14 +245,17 @@ jobs:
           repositories: crewcli
           permission-contents: read
 
-      - name: Revalidate the exact activation window immediately before content write
+      - name: Revalidate source authorization immediately before the only content write
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          EXPECTED_APP_INSTALLATION_ID: ${{ secrets.CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID }}
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
         run: |
           set -euo pipefail
+          test "${{ steps.app-token.outputs.app-slug }}" = "crewent-distribution-reader"
+          test "${{ steps.app-token.outputs.installation-id }}" = "$EXPECTED_APP_INSTALLATION_ID"
           root="$RUNNER_TEMP/promotion-authorization"
           mkdir -p "$root"
           gh api "repos/zoe-llc/crewcli/compare/${AUTHORIZATION_SHA}...develop" > "$root/authorization-develop.json"
@@ -238,14 +282,14 @@ jobs:
             --executor "github:$GITHUB_ACTOR" \
             --output "$root/promotion-authorization.json"
 
-      - name: Push the reviewed candidate validate its exact commit and open a stable promotion PR
+      - name: Push validate the exact commit and open the stable promotion PR
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
           BOTTLE_RUN_ID: ${{ inputs.bottleRunId }}
-          CANARY_RUN_ID: ${{ inputs.canaryRunId }}
+          DISTRIBUTION_CANARY_RUN_ID: ${{ inputs.distributionCanaryRunId }}
         run: |
           set -euo pipefail
           write_header="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\r\n')"
@@ -284,11 +328,12 @@ jobs:
             echo "source SHA: ${SOURCE_SHA}"
             echo "authorization SHA: ${AUTHORIZATION_SHA}"
             echo "bottle run: ${BOTTLE_RUN_ID}"
-            echo "canary run: ${CANARY_RUN_ID}"
+            echo "distribution canary run: ${DISTRIBUTION_CANARY_RUN_ID}"
             echo
             echo "## 不変条件"
             echo
-            echo "- 3 bottle と4環境canaryが同じcandidate identityでPASS済み"
+            echo "- 3 bottle と3環境distribution canaryが同じcandidate identityでPASS済み"
+            echo "- 製品canaryはsource側で独立確認する"
             echo "- source release、tag、GHCR blobは変更しない"
             echo "- npm dist-tag is not used"
             echo "- このworkflowはPRを自動mergeしない"
