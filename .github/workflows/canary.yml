@@ -1,4 +1,4 @@
-name: Verify exact private Homebrew consumers
+name: Verify exact private Homebrew distribution
 
 on:
   workflow_dispatch:
@@ -19,33 +19,13 @@ on:
         description: Successful exact bottle workflow run ID
         required: true
         type: string
-      deploySha:
-        description: Exact deployed Hosted commit
-        required: true
-        type: string
-      hostOrigin:
-        description: Production HTTPS origin without a path
-        required: true
-        type: string
-      productSlug:
-        description: Dedicated canary Product slug
-        required: true
-        type: string
-      changeIntentNumber:
-        description: Dedicated canary Change Intent number
-        required: true
-        type: number
-      canarySha:
-        description: Exact commit in zoe-llc/cli-distribution-canary
-        required: true
-        type: string
 
 permissions:
   actions: read
   contents: read
 
 concurrency:
-  group: cli-consumer-canary-${{ inputs.version }}
+  group: cli-distribution-canary-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
@@ -53,54 +33,10 @@ env:
   HOMEBREW_NO_INSTALL_FROM_API: "1"
 
 jobs:
-  canary:
+  preflight:
     if: github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: macos-arm64
-            runner: '"macos-15"'
-            runnerLabel: macos-15
-            tapUserSecret: CLI_TAP_READ_USER_MACOS_ARM64
-            tapTokenSecret: CLI_TAP_READ_TOKEN_MACOS_ARM64
-            ghcrUserSecret: CLI_GHCR_READ_USER_MACOS_ARM64
-            ghcrTokenSecret: CLI_GHCR_READ_TOKEN_MACOS_ARM64
-            canaryUserSecret: CLI_CANARY_READ_USER_MACOS_ARM64
-            canaryTokenSecret: CLI_CANARY_READ_TOKEN_MACOS_ARM64
-            runtimeTokenSecret: CLI_RUNTIME_TOKEN_MACOS_ARM64
-          - target: linux-x86_64
-            runner: '"ubuntu-24.04"'
-            runnerLabel: ubuntu-24.04
-            tapUserSecret: CLI_TAP_READ_USER_LINUX_X86_64
-            tapTokenSecret: CLI_TAP_READ_TOKEN_LINUX_X86_64
-            ghcrUserSecret: CLI_GHCR_READ_USER_LINUX_X86_64
-            ghcrTokenSecret: CLI_GHCR_READ_TOKEN_LINUX_X86_64
-            canaryUserSecret: CLI_CANARY_READ_USER_LINUX_X86_64
-            canaryTokenSecret: CLI_CANARY_READ_TOKEN_LINUX_X86_64
-            runtimeTokenSecret: CLI_RUNTIME_TOKEN_LINUX_X86_64
-          - target: linux-arm64
-            runner: '"ubuntu-24.04-arm"'
-            runnerLabel: ubuntu-24.04-arm
-            tapUserSecret: CLI_TAP_READ_USER_LINUX_ARM64
-            tapTokenSecret: CLI_TAP_READ_TOKEN_LINUX_ARM64
-            ghcrUserSecret: CLI_GHCR_READ_USER_LINUX_ARM64
-            ghcrTokenSecret: CLI_GHCR_READ_TOKEN_LINUX_ARM64
-            canaryUserSecret: CLI_CANARY_READ_USER_LINUX_ARM64
-            canaryTokenSecret: CLI_CANARY_READ_TOKEN_LINUX_ARM64
-            runtimeTokenSecret: CLI_RUNTIME_TOKEN_LINUX_ARM64
-          - target: windows-wsl2
-            runner: '["self-hosted","windows","x64","wsl2","cli-wsl2-canary"]'
-            runnerLabel: self-hosted,windows,x64,wsl2,cli-wsl2-canary
-            tapUserSecret: CLI_TAP_READ_USER_WINDOWS_WSL2
-            tapTokenSecret: CLI_TAP_READ_TOKEN_WINDOWS_WSL2
-            ghcrUserSecret: CLI_GHCR_READ_USER_WINDOWS_WSL2
-            ghcrTokenSecret: CLI_GHCR_READ_TOKEN_WINDOWS_WSL2
-            canaryUserSecret: CLI_CANARY_READ_USER_WINDOWS_WSL2
-            canaryTokenSecret: CLI_CANARY_READ_TOKEN_WINDOWS_WSL2
-            runtimeTokenSecret: CLI_RUNTIME_TOKEN_WINDOWS_WSL2
-    runs-on: ${{ fromJSON(matrix.runner) }}
-    timeout-minutes: 120
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Validate exact dispatch coordinates
         env:
@@ -108,79 +44,19 @@ jobs:
           SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
           BOTTLE_RUN_ID: ${{ inputs.bottleRunId }}
-          DEPLOY_SHA: ${{ inputs.deploySha }}
-          CANARY_SHA: ${{ inputs.canarySha }}
-          PRODUCT_SLUG: ${{ inputs.productSlug }}
-          CHANGE_INTENT_NUMBER: ${{ inputs.changeIntentNumber }}
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           test "$VERSION" != "0.0.0"
           [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$AUTHORIZATION_SHA" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$DEPLOY_SHA" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$CANARY_SHA" =~ ^[a-f0-9]{40}$ ]]
           [[ "$BOTTLE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          [[ "$PRODUCT_SLUG" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
-          [[ "$CHANGE_INTENT_NUMBER" =~ ^[1-9][0-9]*$ ]]
 
       - name: Check out the exact Tap workflow revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-
-      - name: Attest the actual operating system architecture and host
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          system="$(uname -s)"
-          machine="$(uname -m)"
-          kernel_release="$(cat /proc/sys/kernel/osrelease 2>/dev/null || true)"
-          case "$TARGET" in
-            macos-arm64)
-              test "$system" = "Darwin"
-              test "$machine" = "arm64"
-              os=macos
-              architecture=arm64
-              host=macos
-              ;;
-            linux-x86_64)
-              test "$system" = "Linux"
-              test "$machine" = "x86_64"
-              ! grep -Fqi microsoft <<<"$kernel_release"
-              os=linux
-              architecture=x86_64
-              host=linux
-              ;;
-            linux-arm64)
-              test "$system" = "Linux"
-              [[ "$machine" = "arm64" || "$machine" = "aarch64" ]]
-              ! grep -Fqi microsoft <<<"$kernel_release"
-              os=linux
-              architecture=arm64
-              host=linux
-              ;;
-            windows-wsl2)
-              test "$system" = "Linux"
-              test "$machine" = "x86_64"
-              grep -Fqi 'microsoft-standard-WSL2' <<<"$kernel_release"
-              windows_build="$(powershell.exe -NoProfile -Command '[Environment]::OSVersion.Version.Build' | tr -d '\r')"
-              [[ "$windows_build" =~ ^[0-9]+$ ]]
-              test "$windows_build" -ge 22000
-              os=linux
-              architecture=x86_64
-              host=windows11-wsl2
-              ;;
-            *)
-              echo "unsupported target: $TARGET" >&2
-              exit 1
-              ;;
-          esac
-          jq -n --arg os "$os" --arg architecture "$architecture" --arg host "$host" \
-            '{os:$os,architecture:$architecture,host:$host,hostVerified:true}' \
-            > "$RUNNER_TEMP/platform-attestation.json"
 
       - name: Fetch and preflight the exact bottle workflow run
         env:
@@ -197,94 +73,56 @@ jobs:
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: bottle-candidate
-          path: ${{ runner.temp }}/bottle-candidate
+          path: ${{ runner.temp }}/canary-inputs
           github-token: ${{ github.token }}
           repository: zoe-llc/homebrew-crewcli
           run-id: ${{ inputs.bottleRunId }}
 
-      - name: Download the exact source release inputs
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
-        with:
-          name: release-inputs
-          path: ${{ runner.temp }}/source-release
-          github-token: ${{ github.token }}
-          repository: zoe-llc/homebrew-crewcli
-          run-id: ${{ inputs.bottleRunId }}
-
-      - name: Create exact source read token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.CLI_DISTRIBUTION_READER_APP_ID }}
-          private-key: ${{ secrets.CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY }}
-          owner: zoe-llc
-          repositories: crewcli
-          permission-contents: read
-
-      - name: Fetch the exact source canary harness
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          SOURCE_SHA: ${{ inputs.sourceSha }}
-        run: |
-          set -euo pipefail
-          test "${{ steps.app-token.outputs.app-slug }}" = "crewent-distribution-reader"
-          test "${{ steps.app-token.outputs.installation-id }}" = "${{ secrets.CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID }}"
-          mkdir -p "$RUNNER_TEMP/source"
-          gh api "repos/zoe-llc/crewcli/tarball/${SOURCE_SHA}" > "$RUNNER_TEMP/source.tar.gz"
-          tar -xzf "$RUNNER_TEMP/source.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/source"
-          test "$(jq -r .sourceRepository "$RUNNER_TEMP/source/config/cli-distribution.json")" = "zoe-llc/crewcli"
-
-      - name: Set up pnpm for the exact harness
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-        with:
-          package_json_file: ${{ runner.temp }}/source/package.json
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-
-      - name: Build only the harness contract dependency
-        run: |
-          set -euo pipefail
-          pnpm --dir "$RUNNER_TEMP/source" install --frozen-lockfile --ignore-scripts
-          pnpm --dir "$RUNNER_TEMP/source" --filter @crewcli/phase2-contracts transit
-
-      - name: Validate candidate identity and write the closed expected record
+      - name: Validate the exact bottle candidate
         env:
           VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
           BOTTLE_RUN_ID: ${{ inputs.bottleRunId }}
-          DEPLOY_SHA: ${{ inputs.deploySha }}
-          HOST_ORIGIN: ${{ inputs.hostOrigin }}
-          PRODUCT_SLUG: ${{ inputs.productSlug }}
-          CHANGE_INTENT_NUMBER: ${{ inputs.changeIntentNumber }}
-          CANARY_SHA: ${{ inputs.canarySha }}
-          RUNNER_LABEL: ${{ matrix.runnerLabel }}
         run: |
           set -euo pipefail
-          candidate="$RUNNER_TEMP/bottle-candidate/metadata/candidate.json"
-          matrix="$RUNNER_TEMP/bottle-candidate/metadata/bottle-matrix.json"
-          formula="$RUNNER_TEMP/bottle-candidate/Formula/crewent.rb"
+          root="$RUNNER_TEMP/canary-inputs"
+          candidate="$root/metadata/candidate.json"
+          matrix="$root/metadata/bottle-matrix.json"
+          formula="$root/Formula/crewent.rb"
+          for path in "$candidate" "$matrix" "$formula"; do
+            test -f "$path"
+            test ! -L "$path"
+          done
           test "$(jq -c 'keys | sort' "$candidate")" = '["artifactSha256","authorizationSha","bottleMatrixSha256","bottleRunAttempt","bottleRunId","candidateFormulaSha256","manifestSha256","schema","sourceFormulaSha256","sourceSha","tapWorkflowSha","version","workflowBranch","workflowEvent","workflowPath"]'
           jq -e \
-            --arg version "$VERSION" --arg sourceSha "$SOURCE_SHA" --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg version "$VERSION" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
             --arg bottleRunId "$BOTTLE_RUN_ID" \
-            '.schema == "crewcli.homebrew-bottle-candidate/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and .workflowPath == ".github/workflows/bottle.yml" and .workflowEvent == "workflow_dispatch" and .workflowBranch == "main"' \
+            '.schema == "crewcli.homebrew-bottle-candidate/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and (.bottleRunAttempt | type == "number" and . > 0) and (.artifactSha256 | test("^[a-f0-9]{64}$")) and (.manifestSha256 | test("^[a-f0-9]{64}$")) and (.sourceFormulaSha256 | test("^[a-f0-9]{64}$")) and (.candidateFormulaSha256 | test("^[a-f0-9]{64}$")) and (.bottleMatrixSha256 | test("^[a-f0-9]{64}$")) and (.tapWorkflowSha | test("^[a-f0-9]{40}$")) and .workflowPath == ".github/workflows/bottle.yml" and .workflowEvent == "workflow_dispatch" and .workflowBranch == "main"' \
             "$candidate"
           jq -e \
-            --arg tapWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
+            --arg bottleWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
             --argjson bottleRunAttempt "$(jq -r .bottleRunAttempt "$candidate")" \
             --argjson bottleRunId "$BOTTLE_RUN_ID" \
-            '.id == $bottleRunId and .head_sha == $tapWorkflowSha and .run_attempt == $bottleRunAttempt' \
+            '.id == $bottleRunId and .head_sha == $bottleWorkflowSha and .run_attempt == $bottleRunAttempt' \
             "$RUNNER_TEMP/bottle-run.json"
           test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$formula")" = "$(jq -r .candidateFormulaSha256 "$candidate")"
           test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$matrix")" = "$(jq -r .bottleMatrixSha256 "$candidate")"
-          jq -e '.schema == "crewcli.homebrew-bottle-matrix/v1" and (.bottles | length == 3)' "$matrix"
-          expected="$RUNNER_TEMP/canary-expected.json"
+          jq -e \
+            --arg version "$VERSION" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg manifestSha256 "$(jq -r .manifestSha256 "$candidate")" \
+            --arg sourceFormulaSha256 "$(jq -r .sourceFormulaSha256 "$candidate")" \
+            '.schema == "crewcli.homebrew-bottle-matrix/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .manifestSha256 == $manifestSha256 and .formulaSha256 == $sourceFormulaSha256 and ([.bottles[].target] | sort) == ["linux-arm64","linux-x86_64","macos-arm64"] and (.bottles | all(.status == "PASS" and (.bottle.sha256 | test("^[a-f0-9]{64}$"))))' \
+            "$matrix"
+
           jq -n \
-            --arg version "$VERSION" --arg sourceSha "$SOURCE_SHA" --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg version "$VERSION" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
             --arg artifactSha256 "$(jq -r .artifactSha256 "$candidate")" \
             --arg manifestSha256 "$(jq -r .manifestSha256 "$candidate")" \
             --arg formulaSha256 "$(jq -r .candidateFormulaSha256 "$candidate")" \
@@ -292,65 +130,129 @@ jobs:
             --arg macos "$(jq -r '.bottles[] | select(.target == "macos-arm64") | .bottle.sha256' "$matrix")" \
             --arg linuxX64 "$(jq -r '.bottles[] | select(.target == "linux-x86_64") | .bottle.sha256' "$matrix")" \
             --arg linuxArm64 "$(jq -r '.bottles[] | select(.target == "linux-arm64") | .bottle.sha256' "$matrix")" \
-            --arg deploySha "$DEPLOY_SHA" --arg hostOrigin "$HOST_ORIGIN" --arg productSlug "$PRODUCT_SLUG" \
-            --argjson changeIntentNumber "$CHANGE_INTENT_NUMBER" --arg canarySha "$CANARY_SHA" \
-            --arg bottleRunId "$BOTTLE_RUN_ID" --arg workflowRunId "$GITHUB_RUN_ID" \
+            --arg bottleRunId "$BOTTLE_RUN_ID" \
+            --argjson bottleRunAttempt "$(jq -r .bottleRunAttempt "$candidate")" \
+            --arg bottleWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
+            --arg workflowRunId "$GITHUB_RUN_ID" \
             --argjson workflowRunAttempt "$GITHUB_RUN_ATTEMPT" \
-            --arg tapWorkflowSha "$GITHUB_SHA" \
-            '{schema:"crewcli.homebrew-canary-expected/v1",version:$version,sourceSha:$sourceSha,authorizationSha:$authorizationSha,artifactSha256:$artifactSha256,manifestSha256:$manifestSha256,formulaSha256:$formulaSha256,bottleMatrixSha256:$bottleMatrixSha256,bottles:{"macos-arm64":$macos,"linux-x86_64":$linuxX64,"linux-arm64":$linuxArm64},deploySha:$deploySha,hostOrigin:$hostOrigin,productSlug:$productSlug,changeIntentNumber:$changeIntentNumber,canaryRepository:"zoe-llc/cli-distribution-canary",canarySha:$canarySha,bottleRunId:$bottleRunId,workflowRepository:"zoe-llc/homebrew-crewcli",workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,tapWorkflowSha:$tapWorkflowSha}' \
-            > "$expected"
-      - name: Clone the dedicated canary repository with its read-only credential
+            --arg workflowSha "$GITHUB_SHA" \
+            '{schema:"crewcli.homebrew-distribution-canary-expected/v1",version:$version,sourceSha:$sourceSha,authorizationSha:$authorizationSha,artifactSha256:$artifactSha256,manifestSha256:$manifestSha256,formulaSha256:$formulaSha256,bottleMatrixSha256:$bottleMatrixSha256,bottles:{"macos-arm64":$macos,"linux-x86_64":$linuxX64,"linux-arm64":$linuxArm64},bottleRunId:$bottleRunId,bottleRunAttempt:$bottleRunAttempt,bottleWorkflowSha:$bottleWorkflowSha,workflowRepository:"zoe-llc/homebrew-crewcli",workflowRunId:$workflowRunId,workflowRunAttempt:$workflowRunAttempt,workflowSha:$workflowSha}' \
+            > "$root/expected.json"
+          ruby -rjson -e 'value = JSON.parse(File.read(ARGV.fetch(0))); abort unless value.fetch("schema") == "crewcli.homebrew-distribution-canary-expected/v1"' "$root/expected.json"
+
+      - name: Upload verified distribution inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: canary-inputs
+          path: ${{ runner.temp }}/canary-inputs
+          if-no-files-found: error
+          retention-days: 7
+
+  canary:
+    needs: preflight
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: linux-x86_64
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact Tap workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download verified distribution inputs
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: canary-inputs
+          path: ${{ runner.temp }}/canary-inputs
+
+      - name: Attest the actual operating system and architecture
         env:
-          CANARY_READ_USER: ${{ secrets[matrix.canaryUserSecret] }}
-          CANARY_READ_TOKEN: ${{ secrets[matrix.canaryTokenSecret] }}
-          CANARY_SHA: ${{ inputs.canarySha }}
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          test -n "$CANARY_READ_USER"
-          test -n "$CANARY_READ_TOKEN"
-          header="$(printf '%s:%s' "$CANARY_READ_USER" "$CANARY_READ_TOKEN" | base64 | tr -d '\r\n')"
-          GIT_CONFIG_COUNT=1 \
-            GIT_CONFIG_KEY_0=http.extraheader \
-            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $header" \
-            GIT_TERMINAL_PROMPT=0 \
-            git clone --no-tags https://github.com/zoe-llc/cli-distribution-canary.git "$RUNNER_TEMP/canary-repository"
-          git -C "$RUNNER_TEMP/canary-repository" checkout -B "canary-${GITHUB_RUN_ID}-${TARGET}" "$CANARY_SHA"
-          test "$(git -C "$RUNNER_TEMP/canary-repository" remote get-url origin)" = "https://github.com/zoe-llc/cli-distribution-canary.git"
-          test -z "$(git -C "$RUNNER_TEMP/canary-repository" status --porcelain=v1 --untracked-files=all)"
+          system="$(uname -s)"
+          machine="$(uname -m)"
+          case "$TARGET" in
+            macos-arm64)
+              test "$system" = "Darwin"
+              test "$machine" = "arm64"
+              os=macos
+              architecture=arm64
+              host=macos
+              ;;
+            linux-x86_64)
+              test "$system" = "Linux"
+              test "$machine" = "x86_64"
+              ! grep -Fqi microsoft /proc/sys/kernel/osrelease
+              os=linux
+              architecture=x86_64
+              host=linux
+              ;;
+            linux-arm64)
+              test "$system" = "Linux"
+              [[ "$machine" = "arm64" || "$machine" = "aarch64" ]]
+              ! grep -Fqi microsoft /proc/sys/kernel/osrelease
+              os=linux
+              architecture=arm64
+              host=linux
+              ;;
+            *)
+              echo "unsupported target: $TARGET" >&2
+              exit 1
+              ;;
+          esac
+          jq -n --arg os "$os" --arg architecture "$architecture" --arg host "$host" \
+            '{os:$os,architecture:$architecture,host:$host,verified:true}' \
+            > "$RUNNER_TEMP/platform-attestation.json"
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
         with:
           token: ${{ github.token }}
 
-      - name: Authenticate and tap the private repository
+      - name: Clone the private Tap with the shared read credential
         env:
-          TAP_READ_USER: ${{ secrets[matrix.tapUserSecret] }}
-          TAP_READ_TOKEN: ${{ secrets[matrix.tapTokenSecret] }}
+          TAP_READ_USER: ${{ secrets.CLI_TAP_READ_USER }}
+          TAP_READ_TOKEN: ${{ secrets.CLI_TAP_READ_TOKEN }}
         run: |
           set -euo pipefail
           test -n "$TAP_READ_USER"
           test -n "$TAP_READ_TOKEN"
           brew untap zoe-llc/crewcli >/dev/null 2>&1 || true
+          tap_root="$(brew --repository)/Library/Taps/zoe-llc/homebrew-crewcli"
+          mkdir -p "$(dirname "$tap_root")"
           header="$(printf '%s:%s' "$TAP_READ_USER" "$TAP_READ_TOKEN" | base64 | tr -d '\r\n')"
           GIT_CONFIG_COUNT=1 \
             GIT_CONFIG_KEY_0=http.extraheader \
             GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $header" \
             GIT_TERMINAL_PROMPT=0 \
-            brew tap zoe-llc/crewcli https://github.com/zoe-llc/homebrew-crewcli.git
-          tapped="$(brew --repo zoe-llc/crewcli)"
-          test "$(git -C "$tapped" remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewcli.git"
-          cp "$RUNNER_TEMP/bottle-candidate/Formula/crewent.rb" "$tapped/Formula/crewent.rb"
-          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$tapped/Formula/crewent.rb")" = "$(jq -r .formulaSha256 "$RUNNER_TEMP/canary-expected.json")"
+            git clone --no-tags https://github.com/zoe-llc/homebrew-crewcli.git "$tap_root"
+          git -C "$tap_root" checkout --detach "$GITHUB_SHA"
+          test "$(git -C "$tap_root" remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewcli.git"
+          cp "$RUNNER_TEMP/canary-inputs/Formula/crewent.rb" "$tap_root/Formula/crewent.rb"
+          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$tap_root/Formula/crewent.rb")" = "$(jq -r .formulaSha256 "$RUNNER_TEMP/canary-inputs/expected.json")"
+          unset TAP_READ_TOKEN header
 
-      - name: Install the exact private bottle and verify both commands
+      - name: Verify the exact private bottle lifecycle
         env:
-          GHCR_READ_USER: ${{ secrets[matrix.ghcrUserSecret] }}
-          GHCR_READ_TOKEN: ${{ secrets[matrix.ghcrTokenSecret] }}
+          GHCR_READ_USER: ${{ secrets.CLI_GHCR_READ_USER }}
+          GHCR_READ_TOKEN: ${{ secrets.CLI_GHCR_READ_TOKEN }}
           VERSION: ${{ inputs.version }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          test -n "$GHCR_READ_USER"
+          test -n "$GHCR_READ_TOKEN"
           registry_auth="$(printf '%s:%s' "$GHCR_READ_USER" "$GHCR_READ_TOKEN" | base64 | tr -d '\r\n')"
           export HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN="$registry_auth"
           brew install --force-bottle zoe-llc/crewcli/crewent
@@ -358,191 +260,30 @@ jobs:
           test "$("$prefix/bin/crewent" --version)" = "$VERSION"
           "$prefix/bin/crewent" --help | grep -q 'Usage:'
           test "$("$prefix/bin/crewcli" --version)" = "$VERSION"
-          unset HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN registry_auth
-
-      - name: Revalidate the activation window immediately before phases A and B
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ inputs.version }}
-          SOURCE_SHA: ${{ inputs.sourceSha }}
-          AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/canary-authorization-ab"
-          mkdir -p "$root"
-          gh api "repos/zoe-llc/crewcli/compare/${AUTHORIZATION_SHA}...develop" > "$root/authorization-develop.json"
-          gh api "repos/zoe-llc/crewcli/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$root/source-authorization.json"
-          jq -n \
-            --arg authorizationSha "$AUTHORIZATION_SHA" \
-            --arg authorizationMergeBase "$(jq -r '.merge_base_commit.sha' "$root/authorization-develop.json")" \
-            --arg authorizationStatus "$(jq -r '.status' "$root/authorization-develop.json")" \
-            --arg sourceSha "$SOURCE_SHA" \
-            --arg sourceMergeBase "$(jq -r '.merge_base_commit.sha' "$root/source-authorization.json")" \
-            --arg sourceStatus "$(jq -r '.status' "$root/source-authorization.json")" \
-            '{authorizationOnDevelop:{baseSha:$authorizationSha,head:"develop",mergeBaseSha:$authorizationMergeBase,status:$authorizationStatus},sourceToAuthorization:{baseSha:$sourceSha,head:$authorizationSha,mergeBaseSha:$sourceMergeBase,status:$sourceStatus}}' \
-            > "$root/ancestry.json"
-          activation_path="docs/verification/cli-internal-activation-window-${VERSION}.json"
-          gh api -H "Accept: application/vnd.github.raw+json" \
-            "repos/zoe-llc/crewcli/contents/${activation_path}?ref=${AUTHORIZATION_SHA}" \
-            > "$root/activation-window.json"
-          ruby scripts/verify_activation_window.rb \
-            --evidence "$root/activation-window.json" \
-            --ancestry "$root/ancestry.json" \
-            --version "$VERSION" \
-            --source-sha "$SOURCE_SHA" \
-            --authorization-sha "$AUTHORIZATION_SHA" \
-            --executor "github:$GITHUB_ACTOR" \
-            --output "$root/authorization.json"
-
-      - name: Run exact Hosted phase A and B
-        env:
-          CREWCLI_CANARY_ACCESS_TOKEN: ${{ secrets[matrix.runtimeTokenSecret] }}
-          SOURCE_SHA: ${{ inputs.sourceSha }}
-          DEPLOY_SHA: ${{ inputs.deploySha }}
-          HOST_ORIGIN: ${{ inputs.hostOrigin }}
-          PRODUCT_SLUG: ${{ inputs.productSlug }}
-          CHANGE_INTENT_NUMBER: ${{ inputs.changeIntentNumber }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/canary-evidence"
-          artifact_name="$(jq -r .artifactFileName "$RUNNER_TEMP/source-release/bundle.json")"
-          node "$RUNNER_TEMP/source/scripts/cli-release/step3-canary.mjs" \
-            --phase ab \
-            --binary "$(brew --prefix crewent)/bin/crewent" \
-            --repository "$RUNNER_TEMP/canary-repository" \
-            --host-origin "$HOST_ORIGIN" \
-            --product "$PRODUCT_SLUG" \
-            --repository-locator zoe-llc/cli-distribution-canary \
-            --number "$CHANGE_INTENT_NUMBER" \
-            --artifact "$RUNNER_TEMP/source-release/$artifact_name" \
-            --artifact-metadata "$RUNNER_TEMP/source-release/package-artifact.json" \
-            --manifest "$RUNNER_TEMP/source-release/distribution-release.json" \
-            --workflow-sha "$SOURCE_SHA" \
-            --deploy-sha "$DEPLOY_SHA" \
-            --evidence "$RUNNER_TEMP/canary-evidence/phase-ab.json"
-
-      - name: Upload sanitized A/B evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: canary-ab-${{ matrix.target }}
-          path: ${{ runner.temp }}/canary-evidence/phase-ab.json
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Wait for the exact stale-ready marker
-        env:
-          GH_TOKEN: ${{ secrets[matrix.canaryTokenSecret] }}
-          CANARY_SHA: ${{ inputs.canarySha }}
-        run: |
-          set -euo pipefail
-          marker="cli-canary-stale-ready-${GITHUB_RUN_ID}"
-          for _attempt in $(seq 1 120); do
-            marker_json="$RUNNER_TEMP/stale-marker.json"
-            if gh api "repos/zoe-llc/cli-distribution-canary/git/ref/tags/${marker}" > "$marker_json" 2>/dev/null; then
-              marker_sha="$(jq -r '.object.sha' "$marker_json")"
-              marker_type="$(jq -r '.object.type' "$marker_json")"
-              test "$marker_type" = "commit"
-              test "$marker_sha" = "$CANARY_SHA"
-              exit 0
-            fi
-            sleep 30
-          done
-          echo "stale-ready marker was not observed in the bounded window" >&2
-          exit 1
-
-      - name: Revalidate the activation window immediately before phase C
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ inputs.version }}
-          SOURCE_SHA: ${{ inputs.sourceSha }}
-          AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
-        run: |
-          set -euo pipefail
-          root="$RUNNER_TEMP/canary-authorization-c"
-          mkdir -p "$root"
-          gh api "repos/zoe-llc/crewcli/compare/${AUTHORIZATION_SHA}...develop" > "$root/authorization-develop.json"
-          gh api "repos/zoe-llc/crewcli/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$root/source-authorization.json"
-          jq -n \
-            --arg authorizationSha "$AUTHORIZATION_SHA" \
-            --arg authorizationMergeBase "$(jq -r '.merge_base_commit.sha' "$root/authorization-develop.json")" \
-            --arg authorizationStatus "$(jq -r '.status' "$root/authorization-develop.json")" \
-            --arg sourceSha "$SOURCE_SHA" \
-            --arg sourceMergeBase "$(jq -r '.merge_base_commit.sha' "$root/source-authorization.json")" \
-            --arg sourceStatus "$(jq -r '.status' "$root/source-authorization.json")" \
-            '{authorizationOnDevelop:{baseSha:$authorizationSha,head:"develop",mergeBaseSha:$authorizationMergeBase,status:$authorizationStatus},sourceToAuthorization:{baseSha:$sourceSha,head:$authorizationSha,mergeBaseSha:$sourceMergeBase,status:$sourceStatus}}' \
-            > "$root/ancestry.json"
-          activation_path="docs/verification/cli-internal-activation-window-${VERSION}.json"
-          gh api -H "Accept: application/vnd.github.raw+json" \
-            "repos/zoe-llc/crewcli/contents/${activation_path}?ref=${AUTHORIZATION_SHA}" \
-            > "$root/activation-window.json"
-          ruby scripts/verify_activation_window.rb \
-            --evidence "$root/activation-window.json" \
-            --ancestry "$root/ancestry.json" \
-            --version "$VERSION" \
-            --source-sha "$SOURCE_SHA" \
-            --authorization-sha "$AUTHORIZATION_SHA" \
-            --executor "github:$GITHUB_ACTOR" \
-            --output "$root/authorization.json"
-
-      - name: Run stale phase C
-        env:
-          CREWCLI_CANARY_ACCESS_TOKEN: ${{ secrets[matrix.runtimeTokenSecret] }}
-          SOURCE_SHA: ${{ inputs.sourceSha }}
-          DEPLOY_SHA: ${{ inputs.deploySha }}
-          HOST_ORIGIN: ${{ inputs.hostOrigin }}
-          PRODUCT_SLUG: ${{ inputs.productSlug }}
-          CHANGE_INTENT_NUMBER: ${{ inputs.changeIntentNumber }}
-        run: |
-          set -euo pipefail
-          artifact_name="$(jq -r .artifactFileName "$RUNNER_TEMP/source-release/bundle.json")"
-          node "$RUNNER_TEMP/source/scripts/cli-release/step3-canary.mjs" \
-            --phase c \
-            --binary "$(brew --prefix crewent)/bin/crewent" \
-            --repository "$RUNNER_TEMP/canary-repository" \
-            --host-origin "$HOST_ORIGIN" \
-            --product "$PRODUCT_SLUG" \
-            --repository-locator zoe-llc/cli-distribution-canary \
-            --number "$CHANGE_INTENT_NUMBER" \
-            --artifact "$RUNNER_TEMP/source-release/$artifact_name" \
-            --artifact-metadata "$RUNNER_TEMP/source-release/package-artifact.json" \
-            --manifest "$RUNNER_TEMP/source-release/distribution-release.json" \
-            --workflow-sha "$SOURCE_SHA" \
-            --deploy-sha "$DEPLOY_SHA" \
-            --prior-evidence "$RUNNER_TEMP/canary-evidence/phase-ab.json" \
-            --evidence "$RUNNER_TEMP/canary-evidence/phase-c.json" \
-            --stale-prepared
-
-      - name: Verify upgrade, uninstall, reinstall, and initial rollback
-        env:
-          GHCR_READ_USER: ${{ secrets[matrix.ghcrUserSecret] }}
-          GHCR_READ_TOKEN: ${{ secrets[matrix.ghcrTokenSecret] }}
-          VERSION: ${{ inputs.version }}
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          registry_auth="$(printf '%s:%s' "$GHCR_READ_USER" "$GHCR_READ_TOKEN" | base64 | tr -d '\r\n')"
-          export HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN="$registry_auth"
-          brew upgrade zoe-llc/crewcli/crewent
-          test "$(crewent --version)" = "$VERSION"
           brew uninstall crewent
           if brew list --formula crewent; then
             echo "crewent remained installed after uninstall" >&2
             exit 1
           fi
           brew install --force-bottle zoe-llc/crewcli/crewent
-          test "$(crewent --version)" = "$VERSION"
-          test "$(crewcli --version)" = "$VERSION"
+          prefix="$(brew --prefix crewent)"
+          test "$("$prefix/bin/crewent" --version)" = "$VERSION"
+          test "$("$prefix/bin/crewcli" --version)" = "$VERSION"
           brew uninstall crewent
           if brew list --formula crewent; then
-            echo "crewent remained installed after initial rollback" >&2
+            echo "crewent remained installed after clean rollback" >&2
             exit 1
           fi
-          unset HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN registry_auth
-          jq -n --arg target "$TARGET" --argjson platform "$(cat "$RUNNER_TEMP/platform-attestation.json")" \
-            '{schema:"crewcli.homebrew-canary-lifecycle/v1",target:$target,platform:$platform,installation:{tapAuthenticated:true,ghcrAuthenticated:true,bottleOnly:true,versionMatched:true,helpMatched:true,aliasMatched:true},lifecycle:{upgradePassed:true,uninstallPassed:true,reinstallPassed:true,initialRollbackClean:true}}' \
+          unset HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN GHCR_READ_TOKEN registry_auth
+
+          mkdir -p "$RUNNER_TEMP/canary-evidence"
+          jq -n \
+            --arg target "$TARGET" \
+            --argjson platform "$(cat "$RUNNER_TEMP/platform-attestation.json")" \
+            '{schema:"crewcli.homebrew-distribution-canary-lifecycle/v1",target:$target,platform:$platform,installation:{tapAuthenticated:true,ghcrAuthenticated:true,bottleOnly:true},commands:{primaryVersionMatched:true,primaryHelpMatched:true,aliasVersionMatched:true},lifecycle:{uninstallPassed:true,reinstallPassed:true,cleanRollbackPassed:true}}' \
             > "$RUNNER_TEMP/canary-evidence/lifecycle.json"
 
-      - name: Close the target evidence
+      - name: Close the distribution target evidence
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -550,17 +291,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/canary-output"
           ruby scripts/assert_canary_matrix.rb target \
             --target "$TARGET" \
-            --expected "$RUNNER_TEMP/canary-expected.json" \
-            --phase-ab "$RUNNER_TEMP/canary-evidence/phase-ab.json" \
-            --phase-c "$RUNNER_TEMP/canary-evidence/phase-c.json" \
+            --expected "$RUNNER_TEMP/canary-inputs/expected.json" \
             --lifecycle "$RUNNER_TEMP/canary-evidence/lifecycle.json" \
             --output "$RUNNER_TEMP/canary-output/${TARGET}.json"
-          cp "$RUNNER_TEMP/canary-expected.json" "$RUNNER_TEMP/canary-output/expected.json"
+          jq -e '.schema == "crewcli.homebrew-distribution-canary-evidence/v1" and .status == "PASS"' \
+            "$RUNNER_TEMP/canary-output/${TARGET}.json"
+          cp "$RUNNER_TEMP/canary-inputs/expected.json" "$RUNNER_TEMP/canary-output/expected.json"
 
-      - name: Upload closed target evidence
+      - name: Upload closed distribution target evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: canary-${{ matrix.target }}
+          name: distribution-canary-${{ matrix.target }}
           path: ${{ runner.temp }}/canary-output
           if-no-files-found: error
           retention-days: 7
@@ -583,39 +324,36 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Download all four closed target records
+      - name: Download all three closed target records
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          pattern: canary-*
+          pattern: distribution-canary-*
           path: ${{ runner.temp }}/canary-targets
 
-      - name: Assert the four-platform matrix
+      - name: Assert the three-target distribution matrix
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/canary-targets"
-          expected="$root/canary-macos-arm64/expected.json"
-          for target in linux-x86_64 linux-arm64 windows-wsl2; do
-            cmp "$expected" "$root/canary-${target}/expected.json"
+          expected="$root/distribution-canary-macos-arm64/expected.json"
+          for target in linux-x86_64 linux-arm64; do
+            cmp "$expected" "$root/distribution-canary-${target}/expected.json"
           done
-          mkdir -p "$RUNNER_TEMP/canary-matrix"
+          mkdir -p "$RUNNER_TEMP/distribution-canary-evidence/targets"
           ruby scripts/assert_canary_matrix.rb matrix \
             --expected "$expected" \
-            --output "$RUNNER_TEMP/canary-matrix/canary-matrix.json" \
-            "$root/canary-macos-arm64/macos-arm64.json" \
-            "$root/canary-linux-x86_64/linux-x86_64.json" \
-            "$root/canary-linux-arm64/linux-arm64.json" \
-            "$root/canary-windows-wsl2/windows-wsl2.json"
-          cp "$expected" "$RUNNER_TEMP/canary-matrix/expected.json"
-          mkdir -p "$RUNNER_TEMP/canary-matrix/targets"
-          cp "$root/canary-macos-arm64/macos-arm64.json" "$RUNNER_TEMP/canary-matrix/targets/"
-          cp "$root/canary-linux-x86_64/linux-x86_64.json" "$RUNNER_TEMP/canary-matrix/targets/"
-          cp "$root/canary-linux-arm64/linux-arm64.json" "$RUNNER_TEMP/canary-matrix/targets/"
-          cp "$root/canary-windows-wsl2/windows-wsl2.json" "$RUNNER_TEMP/canary-matrix/targets/"
+            --output "$RUNNER_TEMP/distribution-canary-evidence/distribution-canary-matrix.json" \
+            "$root/distribution-canary-macos-arm64/macos-arm64.json" \
+            "$root/distribution-canary-linux-x86_64/linux-x86_64.json" \
+            "$root/distribution-canary-linux-arm64/linux-arm64.json"
+          cp "$expected" "$RUNNER_TEMP/distribution-canary-evidence/expected.json"
+          cp "$root/distribution-canary-macos-arm64/macos-arm64.json" "$RUNNER_TEMP/distribution-canary-evidence/targets/"
+          cp "$root/distribution-canary-linux-x86_64/linux-x86_64.json" "$RUNNER_TEMP/distribution-canary-evidence/targets/"
+          cp "$root/distribution-canary-linux-arm64/linux-arm64.json" "$RUNNER_TEMP/distribution-canary-evidence/targets/"
 
-      - name: Upload the blocking canary matrix
+      - name: Upload the blocking distribution canary matrix
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: canary-evidence
-          path: ${{ runner.temp }}/canary-matrix
+          name: distribution-canary-evidence
+          path: ${{ runner.temp }}/distribution-canary-evidence
           if-no-files-found: error
           retention-days: 7

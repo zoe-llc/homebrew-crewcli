@@ -9,92 +9,96 @@ class CanaryWorkflowTest < Minitest::Test
     @source = File.read(WORKFLOW)
   end
 
-  def test_is_manual_exact_and_has_all_four_blocking_consumers
+  def test_is_manual_with_exactly_four_inputs_and_three_blocking_targets
     assert_match(/^\s+workflow_dispatch:/, @source)
     refute_match(/^\s+(?:pull_request|push|schedule):/, @source)
-    %w[version sourceSha authorizationSha bottleRunId deploySha hostOrigin productSlug changeIntentNumber canarySha].each do |input|
-      assert_match(/^\s+#{input}:/, @source)
-    end
-    %w[macos-arm64 linux-x86_64 linux-arm64 windows-wsl2].each do |target|
-      assert_includes @source, target
-    end
-    assert_includes @source, '["self-hosted","windows","x64","wsl2","cli-wsl2-canary"]'
-    assert_includes @source, "fail-fast: false"
+    dispatch = @source.match(/workflow_dispatch:\n(?<body>.*?)\npermissions:/m)["body"]
+    assert_equal %w[version sourceSha authorizationSha bottleRunId], dispatch.scan(/^ {6}(\w+):$/).flatten
+
+    assert_equal %w[macos-arm64 linux-x86_64 linux-arm64], @source.scan(/^\s+- target: (\S+)$/).flatten
+    assert_includes @source, "runner: macos-15"
+    assert_includes @source, "runner: ubuntu-24.04"
+    assert_includes @source, "runner: ubuntu-24.04-arm"
+    refute_includes @source, "windows-wsl2"
+    refute_includes @source, "self-hosted"
     assert_includes @source, "scripts/assert_canary_matrix.rb matrix"
   end
 
-  def test_downloads_one_exact_bottle_candidate_and_exact_source_harness
-    assert_includes @source, "run-id: ${{ inputs.bottleRunId }}"
-    assert_includes @source, "name: bottle-candidate"
-    assert_includes @source, "name: release-inputs"
-    assert_includes @source, "actions/create-github-app-token@"
-    assert_includes @source, 'repos/zoe-llc/crewcli/tarball/${SOURCE_SHA}'
-    assert_includes @source, "--filter @crewcli/phase2-contracts transit"
-    assert_includes @source, "candidate.json"
-    assert_includes @source, "bottle-matrix.json"
+  def test_preflights_one_exact_successful_bottle_run_before_consumers
+    fetch = @source.index("Fetch and preflight the exact bottle workflow run")
+    download = @source.index("Download the exact bottle candidate")
+    verify = @source.index("Validate the exact bottle candidate")
+    upload = @source.index("Upload verified distribution inputs")
+    assert fetch && download && verify && upload
+    assert_operator fetch, :<, download
+    assert_operator download, :<, verify
+    assert_operator verify, :<, upload
+
     assert_includes @source, 'actions/runs/${BOTTLE_RUN_ID}'
     assert_includes @source, '.path == ".github/workflows/bottle.yml"'
     assert_includes @source, '.event == "workflow_dispatch"'
     assert_includes @source, '.head_branch == "main"'
     assert_includes @source, '.status == "completed" and .conclusion == "success"'
-    assert_includes @source, '.head_sha == $tapWorkflowSha'
+    assert_includes @source, '.head_sha == $bottleWorkflowSha'
     assert_includes @source, '.run_attempt == $bottleRunAttempt'
+    assert_includes @source, "candidateFormulaSha256"
+    assert_includes @source, "bottleMatrixSha256"
+    assert_includes @source, "canary-inputs"
+    assert_match(/^\s+canary:\n\s+needs: preflight/, @source)
   end
 
-  def test_attests_the_real_platform_instead_of_trusting_runner_labels
-    assert_includes @source, "uname -s"
-    assert_includes @source, "uname -m"
-    assert_includes @source, "/proc/sys/kernel/osrelease"
-    assert_includes @source, "microsoft-standard-WSL2"
-    assert_includes @source, "powershell.exe -NoProfile"
-    assert_includes @source, "Version.Build"
-    assert_includes @source, "hostVerified:true"
-    assert_includes @source, '--argjson platform "$(cat "$RUNNER_TEMP/platform-attestation.json")"'
-    assert_includes @source, "platform:$platform"
-  end
-
-  def test_keeps_credentials_separate_and_out_of_git_urls
-    %w[TAP_READ_USER TAP_READ_TOKEN GHCR_READ_USER GHCR_READ_TOKEN CANARY_READ_USER CANARY_READ_TOKEN CREWCLI_CANARY_ACCESS_TOKEN].each do |name|
-      assert_includes @source, name
-    end
-    assert_includes @source, "secrets[matrix.tapUserSecret]"
-    assert_includes @source, "secrets[matrix.runtimeTokenSecret]"
+  def test_uses_only_four_shared_read_credentials
+    secrets = @source.scan(/\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}/).flatten.uniq.sort
+    assert_equal %w[
+      CLI_GHCR_READ_TOKEN CLI_GHCR_READ_USER CLI_TAP_READ_TOKEN CLI_TAP_READ_USER
+    ], secrets
+    refute_includes @source, "secrets["
+    refute_includes @source, "CLI_DISTRIBUTION_READER_APP"
+    refute_includes @source, "CLI_RUNTIME_TOKEN"
+    refute_includes @source, "CLI_CANARY_READ"
     refute_match(%r{https://[^\s$]+:[^\s$]+@github\.com}, @source)
     assert_includes @source, "GIT_CONFIG_VALUE_0"
     assert_includes @source, "HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN"
   end
 
-  def test_runs_ab_then_waits_for_exact_stale_marker_then_runs_c
-    first_authorization = @source.index("scripts/verify_activation_window.rb")
-    ab = @source.index("--phase ab")
-    upload = @source.index("Upload sanitized A/B evidence")
-    wait = @source.index("Wait for the exact stale-ready marker")
-    second_authorization = @source.index("scripts/verify_activation_window.rb", first_authorization + 1)
-    c = @source.index("--phase c")
-    assert first_authorization && ab && upload && wait && second_authorization && c
-    assert_operator first_authorization, :<, ab
-    assert_operator ab, :<, upload
-    assert_operator upload, :<, wait
-    assert_operator wait, :<, c
-    assert_operator wait, :<, second_authorization
-    assert_operator second_authorization, :<, c
-    assert_operator @source.scan("scripts/verify_activation_window.rb").length, :>=, 2
-    assert_includes @source, 'cli-canary-stale-ready-${GITHUB_RUN_ID}'
-    assert_includes @source, 'test "$marker_sha" = "$CANARY_SHA"'
+  def test_attests_actual_os_and_architecture_without_wsl2
+    assert_includes @source, "uname -s"
+    assert_includes @source, "uname -m"
+    assert_includes @source, "host=macos"
+    assert_includes @source, "host=linux"
+    assert_includes @source, "verified:true"
+    refute_includes @source, "powershell.exe"
+    refute_includes @source, "microsoft-standard-WSL2"
   end
 
-  def test_requires_bottle_install_runtime_alias_and_full_lifecycle
-    assert_includes @source, "brew install --force-bottle zoe-llc/crewcli/crewent"
-    assert_includes @source, "crewent --version"
-    assert_includes @source, 'bin/crewent" --help'
-    assert_includes @source, "crewcli --version"
-    assert_includes @source, "brew upgrade zoe-llc/crewcli/crewent"
-    assert_operator @source.scan("brew uninstall crewent").length, :>=, 2
+  def test_clones_private_tap_and_checks_bottle_only_lifecycle
+    assert_includes @source, "git clone --no-tags https://github.com/zoe-llc/homebrew-crewcli.git"
+    assert_includes @source, "cp \"$RUNNER_TEMP/canary-inputs/Formula/crewent.rb\""
     assert_operator @source.scan("brew install --force-bottle zoe-llc/crewcli/crewent").length, :>=, 2
-    assert_includes @source, "initialRollbackClean"
+    assert_includes @source, "crewent\" --version"
+    assert_includes @source, "crewent\" --help"
+    assert_includes @source, "crewcli\" --version"
+    assert_operator @source.scan("brew uninstall crewent").length, :>=, 2
+    assert_includes @source, "cleanRollbackPassed:true"
+    assert_includes @source, "crewcli.homebrew-distribution-canary-lifecycle/v1"
   end
 
-  def test_has_no_write_permission_or_stable_mutation
+  def test_emits_distribution_evidence_without_product_or_source_harness
+    assert_includes @source, "crewcli.homebrew-distribution-canary-expected/v1"
+    assert_includes @source, "crewcli.homebrew-distribution-canary-evidence/v1"
+    assert_includes @source, "distribution-canary-evidence"
+    assert_includes @source, "Download all three closed target records"
+    %w[step3-canary deploySha hostOrigin productSlug changeIntentNumber stale-ready phase-ab phase-c].each do |value|
+      refute_includes @source, value
+    end
+    refute_includes @source, "release-inputs"
+    refute_includes @source, "pnpm"
+    refute_includes @source, "setup-node"
+  end
+
+  def test_has_no_write_permission_or_stable_mutation_and_pins_actions
+    assert_includes @source, "actions: read"
+    assert_includes @source, "contents: read"
     assert_equal 0, @source.scan(/^\s+(?:contents|packages|pull-requests|actions):\s+write\s*$/).length
     refute_match(/git\s+push|gh\s+pr\s+(?:create|merge)|brew\s+pr-upload/, @source)
     remote_uses = @source.scan(/^\s*-?\s*uses:\s*([^\s#]+)/).flatten.reject { |value| value.start_with?("./") }
