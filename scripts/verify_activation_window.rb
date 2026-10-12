@@ -23,6 +23,8 @@ module CliDistribution
     ACTOR_KEYS = %w[executor authorizationOwner releaseOwner rollbackOwner].freeze
     AUTHORIZATION_KEYS = %w[mode independentReviewerRequired].freeze
     ROLLBACK_KEYS = %w[point].freeze
+    ANCESTRY_KEYS = %w[authorizationOnDevelop sourceToAuthorization].freeze
+    COMPARISON_KEYS = %w[baseSha head mergeBaseSha status].freeze
     GATE_IDS = %w[
       distribution-config-release-workflow
       release-authorization-boundary
@@ -41,7 +43,7 @@ module CliDistribution
     IDENTITY = /\Agithub:[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\z/.freeze
     SENSITIVE = /secret-sentinel|bearer\s|cookie=|_authtoken|-----BEGIN .*PRIVATE KEY-----/i
 
-    def verify!(value, expected:, now: Time.now.utc)
+    def verify!(value, expected:, ancestry:, now: Time.now.utc)
       exact_keys(value, ROOT_KEYS, "activation")
       exact_keys(expected, EXPECTED_KEYS, "expected")
       equal(value.fetch("schema"), "crewcli.internal-activation-window/v2", "activation.schema")
@@ -51,6 +53,11 @@ module CliDistribution
       source_sha = pattern(expected.fetch("sourceSha"), COMMIT, "expected.sourceSha")
       authorization_sha = pattern(expected.fetch("authorizationSha"), COMMIT, "expected.authorizationSha")
       executor = pattern(expected.fetch("executor"), IDENTITY, "expected.executor")
+      verify_ancestry!(
+        ancestry,
+        source_sha: source_sha,
+        authorization_sha: authorization_sha
+      )
       equal(value.fetch("version"), version, "activation.version")
       equal(value.fetch("sourceSha"), source_sha, "activation.sourceSha")
 
@@ -107,6 +114,33 @@ module CliDistribution
       }
     rescue KeyError
       fail_at("activation", "contains missing fields")
+    end
+
+    def verify_ancestry!(value, source_sha:, authorization_sha:)
+      exact_keys(value, ANCESTRY_KEYS, "ancestry")
+      verify_comparison!(
+        value.fetch("authorizationOnDevelop"),
+        path: "ancestry.authorizationOnDevelop",
+        base_sha: authorization_sha,
+        head: "develop",
+        merge_base_sha: authorization_sha
+      )
+      verify_comparison!(
+        value.fetch("sourceToAuthorization"),
+        path: "ancestry.sourceToAuthorization",
+        base_sha: source_sha,
+        head: authorization_sha,
+        merge_base_sha: source_sha
+      )
+    end
+
+    def verify_comparison!(value, path:, base_sha:, head:, merge_base_sha:)
+      exact_keys(value, COMPARISON_KEYS, path)
+      equal(value.fetch("baseSha"), base_sha, "#{path}.baseSha")
+      equal(value.fetch("head"), head, "#{path}.head")
+      equal(value.fetch("mergeBaseSha"), merge_base_sha, "#{path}.mergeBaseSha")
+      status = safe_string(value.fetch("status"), "#{path}.status")
+      fail_at("#{path}.status", "must prove ancestor or identical history") unless %w[ahead identical].include?(status)
     end
 
     def evidence_url(value, path)
@@ -188,7 +222,7 @@ module CliDistribution
     end
 
     def run(argv)
-      allowed = %w[--evidence --version --source-sha --authorization-sha --executor --output]
+      allowed = %w[--evidence --ancestry --version --source-sha --authorization-sha --executor --output]
       fail_at("arguments", "must be option/value pairs") unless argv.length == allowed.length * 2
       values = {}
       argv.each_slice(2) do |option, value|
@@ -204,7 +238,8 @@ module CliDistribution
           "sourceSha" => values.fetch("--source-sha"),
           "authorizationSha" => values.fetch("--authorization-sha"),
           "executor" => values.fetch("--executor")
-        }
+        },
+        ancestry: read_json(values.fetch("--ancestry"))
       )
       write_atomic(values.fetch("--output"), result)
       result

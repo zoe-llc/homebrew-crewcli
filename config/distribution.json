@@ -4,5 +4,5 @@
   "sourceRepository": "zoe-llc/crewcli",
   "formulaName": "crewent",
   "tap": "zoe-llc/crewcli",
-  "bottleRoot": "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"
+  "bottleRoot": "https://ghcr.io/v2/zoe-llc/crewcli"
 }

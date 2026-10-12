@@ -27,6 +27,7 @@ class VerifyActivationWindowTest < Minitest::Test
     result = CliDistribution::ActivationWindow.verify!(
       evidence,
       expected: expected,
+      ancestry: ancestry,
       now: Time.iso8601("2026-10-12T12:00:00Z")
     )
 
@@ -47,7 +48,7 @@ class VerifyActivationWindowTest < Minitest::Test
 
     invalid.each do |value, contract, now|
       assert_raises(CliDistribution::ActivationWindowError) do
-        CliDistribution::ActivationWindow.verify!(value, expected: contract, now: now)
+        CliDistribution::ActivationWindow.verify!(value, expected: contract, ancestry: ancestry, now: now)
       end
     end
   end
@@ -66,6 +67,7 @@ class VerifyActivationWindowTest < Minitest::Test
         CliDistribution::ActivationWindow.verify!(
           value,
           expected: expected,
+          ancestry: ancestry,
           now: Time.iso8601("2026-10-12T12:00:00Z")
         )
       end
@@ -78,10 +80,33 @@ class VerifyActivationWindowTest < Minitest::Test
       CliDistribution::ActivationWindow.verify!(
         value,
         expected: expected,
+        ancestry: ancestry,
         now: Time.iso8601("2026-10-12T12:00:00Z")
       )
     end
     refute_match(/secret-sentinel/, error.message)
+  end
+
+  def test_rejects_authorization_not_on_develop_or_source_not_in_authorization_history
+    invalid = [
+      ancestry.merge(
+        "authorizationOnDevelop" => ancestry.fetch("authorizationOnDevelop").merge("mergeBaseSha" => "a" * 40)
+      ),
+      ancestry.merge(
+        "sourceToAuthorization" => ancestry.fetch("sourceToAuthorization").merge("status" => "diverged")
+      )
+    ]
+
+    invalid.each do |value|
+      assert_raises(CliDistribution::ActivationWindowError) do
+        CliDistribution::ActivationWindow.verify!(
+          evidence,
+          expected: expected,
+          ancestry: value,
+          now: Time.iso8601("2026-10-12T12:00:00Z")
+        )
+      end
+    end
   end
 
   private
@@ -123,6 +148,24 @@ class VerifyActivationWindowTest < Minitest::Test
         "independentReviewerRequired" => false
       },
       "rollback" => { "point" => "stable-unavailable" }
+    }
+  end
+
+
+  def ancestry
+    {
+      "authorizationOnDevelop" => {
+        "baseSha" => AUTHORIZATION_SHA,
+        "head" => "develop",
+        "mergeBaseSha" => AUTHORIZATION_SHA,
+        "status" => "ahead"
+      },
+      "sourceToAuthorization" => {
+        "baseSha" => SOURCE_SHA,
+        "head" => AUTHORIZATION_SHA,
+        "mergeBaseSha" => SOURCE_SHA,
+        "status" => "ahead"
+      }
     }
   end
 end

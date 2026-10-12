@@ -14,7 +14,7 @@ class VerifyReleaseBundleTest < Minitest::Test
     "sourceRepository" => "zoe-llc/crewcli",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
-    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli"
+    "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
   }.freeze
   VERSION = "0.1.0"
   SOURCE_SHA = "1" * 40
@@ -24,6 +24,8 @@ class VerifyReleaseBundleTest < Minitest::Test
     with_bundle do |release, directory|
       result = CliDistribution::ReleaseBundle.verify!(
         release: release,
+        tag_reference: tag_reference,
+        tag_object: tag_object,
         directory: directory,
         config: CONFIG,
         expected: expected
@@ -49,6 +51,8 @@ class VerifyReleaseBundleTest < Minitest::Test
         assert_raises(CliDistribution::ReleaseBundleError) do
           CliDistribution::ReleaseBundle.verify!(
             release: value,
+            tag_reference: tag_reference,
+            tag_object: tag_object,
             directory: directory,
             config: CONFIG,
             expected: expected
@@ -60,6 +64,8 @@ class VerifyReleaseBundleTest < Minitest::Test
       assert_raises(CliDistribution::ReleaseBundleError) do
         CliDistribution::ReleaseBundle.verify!(
           release: release,
+          tag_reference: tag_reference,
+          tag_object: tag_object,
           directory: directory,
           config: CONFIG,
           expected: drift
@@ -74,6 +80,8 @@ class VerifyReleaseBundleTest < Minitest::Test
       assert_raises(CliDistribution::ReleaseBundleError) do
         CliDistribution::ReleaseBundle.verify!(
           release: release,
+          tag_reference: tag_reference,
+          tag_object: tag_object,
           directory: directory,
           config: CONFIG,
           expected: expected
@@ -88,6 +96,8 @@ class VerifyReleaseBundleTest < Minitest::Test
       error = assert_raises(CliDistribution::ReleaseBundleError) do
         CliDistribution::ReleaseBundle.verify!(
           release: release,
+          tag_reference: tag_reference,
+          tag_object: tag_object,
           directory: directory,
           config: CONFIG,
           expected: expected
@@ -111,12 +121,30 @@ class VerifyReleaseBundleTest < Minitest::Test
       error = assert_raises(CliDistribution::ReleaseBundleError) do
         CliDistribution::ReleaseBundle.verify!(
           release: release,
+          tag_reference: tag_reference,
+          tag_object: tag_object,
           directory: directory,
           config: CONFIG,
           expected: expected
         )
       end
       refute_match(/secret-sentinel/, error.message)
+    end
+  end
+
+  def test_rejects_a_tag_that_does_not_resolve_to_the_exact_source_commit
+    with_bundle do |release, directory|
+      drifted_tag = tag_object.merge("object" => { "type" => "commit", "sha" => "a" * 40 })
+      assert_raises(CliDistribution::ReleaseBundleError) do
+        CliDistribution::ReleaseBundle.verify!(
+          release: release,
+          tag_reference: tag_reference,
+          tag_object: drifted_tag,
+          directory: directory,
+          config: CONFIG,
+          expected: expected
+        )
+      end
     end
   end
 
@@ -127,6 +155,21 @@ class VerifyReleaseBundleTest < Minitest::Test
       "version" => VERSION,
       "sourceSha" => SOURCE_SHA,
       "authorizationSha" => AUTHORIZATION_SHA
+    }
+  end
+
+  def tag_reference
+    {
+      "ref" => "refs/tags/cli-v0.1.0",
+      "object" => { "type" => "tag", "sha" => "4" * 40 }
+    }
+  end
+
+  def tag_object
+    {
+      "tag" => "cli-v0.1.0",
+      "sha" => "4" * 40,
+      "object" => { "type" => "commit", "sha" => SOURCE_SHA }
     }
   end
 
@@ -186,6 +229,7 @@ class VerifyReleaseBundleTest < Minitest::Test
           "id" => 100 + index,
           "name" => name,
           "state" => "uploaded",
+          "digest" => "sha256:#{Digest::SHA256.file(File.join(directory, name)).hexdigest}",
           "url" => "https://api.github.com/repos/zoe-llc/crewcli/releases/assets/#{100 + index}",
           "browser_download_url" => "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/#{name}"
         }

@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BOTTLE_ROOT: https://ghcr.io/v2/zoe-llc/homebrew-crewcli
+  BOTTLE_ROOT: https://ghcr.io/v2/zoe-llc/crewcli
   HOMEBREW_NO_AUTO_UPDATE: "1"
   HOMEBREW_NO_INSTALL_FROM_API: "1"
 
@@ -81,12 +81,27 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.sourceSha }}
           AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
         run: |
           set -euo pipefail
           release_directory="$RUNNER_TEMP/source-release"
           mkdir -p "$release_directory"
           gh api "repos/zoe-llc/crewcli/releases/tags/cli-v${VERSION}" > "$release_directory/release.json"
+          gh api "repos/zoe-llc/crewcli/git/ref/tags/cli-v${VERSION}" > "$release_directory/tag-reference.json"
+          tag_sha="$(jq -r '.object.sha' "$release_directory/tag-reference.json")"
+          gh api "repos/zoe-llc/crewcli/git/tags/${tag_sha}" > "$release_directory/tag-object.json"
+          gh api "repos/zoe-llc/crewcli/compare/${AUTHORIZATION_SHA}...develop" > "$release_directory/authorization-develop-compare.json"
+          gh api "repos/zoe-llc/crewcli/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$release_directory/source-authorization-compare.json"
+          jq -n \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg authorizationMergeBase "$(jq -r '.merge_base_commit.sha' "$release_directory/authorization-develop-compare.json")" \
+            --arg authorizationStatus "$(jq -r '.status' "$release_directory/authorization-develop-compare.json")" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg sourceMergeBase "$(jq -r '.merge_base_commit.sha' "$release_directory/source-authorization-compare.json")" \
+            --arg sourceStatus "$(jq -r '.status' "$release_directory/source-authorization-compare.json")" \
+            '{authorizationOnDevelop:{baseSha:$authorizationSha,head:"develop",mergeBaseSha:$authorizationMergeBase,status:$authorizationStatus},sourceToAuthorization:{baseSha:$sourceSha,head:$authorizationSha,mergeBaseSha:$sourceMergeBase,status:$sourceStatus}}' \
+            > "$release_directory/ancestry.json"
           expected_names=(
             "crewent-cli-${VERSION}.tgz"
             package-artifact.json
@@ -116,6 +131,7 @@ jobs:
           release_directory="$RUNNER_TEMP/source-release"
           ruby scripts/verify_activation_window.rb \
             --evidence "$release_directory/activation-window.json" \
+            --ancestry "$release_directory/ancestry.json" \
             --version "$VERSION" \
             --source-sha "$SOURCE_SHA" \
             --authorization-sha "$AUTHORIZATION_SHA" \
@@ -123,6 +139,8 @@ jobs:
             --output "$release_directory/authorization.json"
           ruby scripts/verify_release_bundle.rb \
             --release "$release_directory/release.json" \
+            --tag-reference "$release_directory/tag-reference.json" \
+            --tag-object "$release_directory/tag-object.json" \
             --directory "$release_directory" \
             --config config/distribution.json \
             --version "$VERSION" \
@@ -272,7 +290,7 @@ jobs:
               "tag" => ENV.fetch("BOTTLE_TAG"),
               "fileName" => expected_name,
               "sha256" => digest,
-              "blobUrl" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli/crewent/blobs/sha256:#{digest}"
+              "blobUrl" => "https://ghcr.io/v2/zoe-llc/crewcli/crewent/blobs/sha256:#{digest}"
             }
           }
           File.write(File.join(File.dirname(file), "#{ENV.fetch("TARGET")}.evidence.json"), "#{JSON.generate(evidence)}\n")
@@ -347,31 +365,7 @@ jobs:
           test "${#bottle_json[@]}" = "3"
           brew bottle --merge --write --no-commit "${bottle_json[@]}"
 
-      - name: Publish exact private OCI bottle blobs
-        env:
-          HOMEBREW_GITHUB_PACKAGES_USER: ${{ github.actor }}
-          HOMEBREW_GITHUB_PACKAGES_TOKEN: ${{ github.token }}
-        working-directory: ${{ runner.temp }}/bottles
-        run: |
-          set -euo pipefail
-          brew pr-upload --debug --root-url="$BOTTLE_ROOT"
-
-      - name: Read back every immutable bottle blob
-        env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          brew install oras
-          printf '%s' "$GHCR_TOKEN" | oras login ghcr.io --username "$GHCR_USER" --password-stdin
-          jq -r '.bottles[].bottle.sha256' "$RUNNER_TEMP/bottles/bottle-matrix.json" | while read -r digest; do
-            destination="$RUNNER_TEMP/bottles/readback-${digest}.tar.gz"
-            oras blob fetch --output "$destination" "ghcr.io/zoe-llc/homebrew-crewcli/crewent@sha256:${digest}"
-            test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$destination")" = "$digest"
-            rm "$destination"
-          done
-
-      - name: Package the reviewable Formula candidate without changing stable
+      - name: Package the immutable local candidate before publication
         run: |
           set -euo pipefail
           candidate="$RUNNER_TEMP/bottle-candidate"
@@ -382,6 +376,107 @@ jobs:
           cp docs/verification/bottle-build-0.1.0.md "$candidate/docs/verification/"
           git diff -- Formula/crewent.rb > "$candidate/Formula/crewent.rb.patch"
           test -s "$candidate/Formula/crewent.rb.patch"
+
+      - name: Validate the separate GHCR consumer credential before publication
+        env:
+          GHCR_READ_USER: ${{ secrets.GHCR_READ_USER }}
+          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+          GHCR_READ_CREDENTIAL_CONTRACT: classic-pat-read-packages
+        run: |
+          set -euo pipefail
+          test -n "$GHCR_READ_USER"
+          test -n "$GHCR_READ_PAT"
+          test "$GHCR_READ_CREDENTIAL_CONTRACT" = "classic-pat-read-packages"
+          brew install oras
+          credential_root="$RUNNER_TEMP/ghcr-consumer-preflight"
+          mkdir -p "$credential_root"
+          curl --fail --silent --show-error \
+            --dump-header "$credential_root/headers.txt" \
+            --output "$credential_root/user.json" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GHCR_READ_PAT" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/user
+          test "$(jq -r '.login' "$credential_root/user.json")" = "$GHCR_READ_USER"
+          consumer_scopes="$(awk -F ': ' 'tolower($1) == "x-oauth-scopes" { value=tolower($2); gsub(/\r/, "", value); print value }' "$credential_root/headers.txt")"
+          test "$consumer_scopes" = "read:packages"
+          rm "$credential_root/headers.txt" "$credential_root/user.json"
+
+      - name: Revalidate the exact activation window immediately before publication
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.sourceSha }}
+          AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
+        run: |
+          set -euo pipefail
+          ruby scripts/verify_activation_window.rb \
+            --evidence "$RUNNER_TEMP/source-release/activation-window.json" \
+            --ancestry "$RUNNER_TEMP/source-release/ancestry.json" \
+            --version "$VERSION" \
+            --source-sha "$SOURCE_SHA" \
+            --authorization-sha "$AUTHORIZATION_SHA" \
+            --executor "github:$GITHUB_ACTOR" \
+            --output "$RUNNER_TEMP/bottles/publish-authorization.json"
+
+      - name: Publish exact private OCI bottle blobs
+        env:
+          HOMEBREW_GITHUB_PACKAGES_USER: ${{ github.actor }}
+          HOMEBREW_GITHUB_PACKAGES_TOKEN: ${{ github.token }}
+        working-directory: ${{ runner.temp }}/bottles
+        run: |
+          set -euo pipefail
+          brew pr-upload --upload-only --no-commit --debug --root-url="$BOTTLE_ROOT"
+
+      - name: Prove private package linkage and read back with a separate consumer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHCR_WRITE_USER: ${{ github.actor }}
+          GHCR_WRITE_TOKEN: ${{ github.token }}
+          GHCR_READ_USER: ${{ secrets.GHCR_READ_USER }}
+          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+        run: |
+          set -euo pipefail
+          package_name="crewcli/crewent"
+          oci_repository="ghcr.io/zoe-llc/crewcli/crewent"
+          readback_root="$RUNNER_TEMP/ghcr-readback"
+          mkdir -p "$readback_root/manifests" "$readback_root/consumer"
+          gh api "orgs/zoe-llc/packages/container/crewcli%2Fcrewent" > "$readback_root/package.json"
+          gh api graphql \
+            -f query='query { organization(login: "zoe-llc") { packages(first: 10, names: ["crewcli/crewent"], packageType: DOCKER) { nodes { name packageType repository { nameWithOwner } } } } }' \
+            > "$readback_root/graphql.json"
+          jq -e --arg name "$package_name" '.name == $name and .package_type == "container" and .visibility == "private"' "$readback_root/package.json"
+          jq -e '.data.organization.packages.nodes | length == 1 and .[0].repository.nameWithOwner == "zoe-llc/homebrew-crewcli"' "$readback_root/graphql.json"
+
+          printf '%s' "$GHCR_WRITE_TOKEN" | oras login ghcr.io --username "$GHCR_WRITE_USER" --password-stdin
+          oras repo tags "$oci_repository" --format json > "$readback_root/tags.json"
+          jq -e '.tags | length > 0 and all(test("^[A-Za-z0-9][A-Za-z0-9_.-]*$"))' "$readback_root/tags.json"
+          : > "$readback_root/child-digests.txt"
+          jq -r '.tags[]' "$readback_root/tags.json" | while read -r tag; do
+            index_file="$readback_root/manifests/tag-$tag.json"
+            oras manifest fetch "$oci_repository:$tag" --format json > "$index_file"
+            jq -e '.content.manifests | length > 0 and all(.digest | test("^sha256:[a-f0-9]{64}$"))' "$index_file"
+            jq -r '.content.manifests[].digest' "$index_file" >> "$readback_root/child-digests.txt"
+          done
+          sort -u "$readback_root/child-digests.txt" | while read -r digest; do
+            oras manifest fetch "$oci_repository@$digest" --format json > "$readback_root/manifests/${digest#sha256:}.json"
+          done
+          oras logout ghcr.io
+
+          printf '%s' "$GHCR_READ_PAT" | oras login ghcr.io --username "$GHCR_READ_USER" --password-stdin
+          jq -r '.bottles[].bottle.sha256' "$RUNNER_TEMP/bottles/bottle-matrix.json" | while read -r digest; do
+            destination="$readback_root/consumer/${digest}.tar.gz"
+            oras blob fetch --output "$destination" "$oci_repository@sha256:${digest}"
+          done
+          oras logout ghcr.io
+          ruby scripts/assert_ghcr_readback.rb \
+            --package "$readback_root/package.json" \
+            --graphql "$readback_root/graphql.json" \
+            --tags "$readback_root/tags.json" \
+            --manifests "$readback_root/manifests" \
+            --matrix "$RUNNER_TEMP/bottles/bottle-matrix.json" \
+            --readbacks "$readback_root/consumer" \
+            --consumer-user "$GHCR_READ_USER" \
+            --output "$RUNNER_TEMP/bottle-candidate/metadata/ghcr-readback.json"
 
       - name: Upload bottle candidate for exact review and canary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -30,6 +30,14 @@ class BottleWorkflowTest < Minitest::Test
     assert_includes source, "crewent-distribution-reader"
     assert_includes source, "scripts/verify_release_bundle.rb"
     assert_includes source, "scripts/verify_activation_window.rb"
+    assert_operator source.scan("scripts/verify_activation_window.rb").length, :>=, 2
+    assert_includes source, "git/ref/tags/cli-v"
+    assert_includes source, "git/tags/"
+    assert_includes source, "--tag-reference"
+    assert_includes source, "--tag-object"
+    assert_includes source, "compare/${AUTHORIZATION_SHA}...develop"
+    assert_includes source, "compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}"
+    assert_includes source, "--ancestry"
     assert_includes source, "release-evidence.json"
     assert_includes source, "distribution-release.json"
     assert_includes source, "authorizationSha"
@@ -70,7 +78,24 @@ class BottleWorkflowTest < Minitest::Test
 
     refute_match(/git\s+push|gh\s+pr\s+(?:create|merge)/, source)
     assert_includes source, "brew pr-upload"
+    assert_includes source, "--upload-only"
+    assert_includes source, "--no-commit"
     assert_includes source, "actions/upload-artifact@"
     assert_includes source, "bottle-candidate"
+  end
+
+  def test_proves_private_linked_oci_manifests_with_a_separate_read_only_consumer
+    source = File.read(WORKFLOW)
+
+    assert_includes source, "GHCR_READ_USER"
+    assert_includes source, "GHCR_READ_PAT"
+    assert_includes source, "classic-pat-read-packages"
+    assert_includes source, "visibility"
+    assert_includes source, "nameWithOwner"
+    assert_includes source, "oras repo tags"
+    assert_includes source, "oras manifest fetch"
+    assert_includes source, "oras logout ghcr.io"
+    assert_includes source, "scripts/assert_ghcr_readback.rb"
+    assert_includes source, "ghcr-readback.json"
   end
 end

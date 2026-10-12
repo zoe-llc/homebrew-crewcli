@@ -89,7 +89,7 @@ module CliDistribution
         "#{path}.bottle.fileName"
       )
       digest = pattern(bottle.fetch("sha256"), SHA256, "#{path}.bottle.sha256")
-      expected_blob_url = "https://ghcr.io/v2/zoe-llc/homebrew-crewcli/crewent/blobs/sha256:#{digest}"
+      expected_blob_url = "https://ghcr.io/v2/zoe-llc/crewcli/crewent/blobs/sha256:#{digest}"
       equal(bottle.fetch("blobUrl"), expected_blob_url, "#{path}.bottle.blobUrl")
 
       JSON.parse(JSON.generate(value))

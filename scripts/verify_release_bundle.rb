@@ -36,7 +36,7 @@ module CliDistribution
     SEMVER = /\A(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\z/.freeze
     SENSITIVE = /secret-sentinel|bearer\s|cookie=|_authtoken|-----BEGIN .*PRIVATE KEY-----/i
 
-    def verify!(release:, directory:, config:, expected:)
+    def verify!(release:, tag_reference:, tag_object:, directory:, config:, expected:)
       configuration = Configuration.parse(config)
       exact_keys(expected, EXPECTED_KEYS, "expected")
       version = pattern(expected.fetch("version"), SEMVER, "expected.version")
@@ -48,6 +48,13 @@ module CliDistribution
         "expected.authorizationSha"
       )
       root = regular_directory(directory)
+
+      verify_tag!(
+        tag_reference,
+        tag_object,
+        version: version,
+        source_sha: source_sha
+      )
 
       fail_at("release", "must be an object") unless release.is_a?(Hash)
       equal(release.fetch("tag_name", nil), "cli-v#{version}", "release.tag_name")
@@ -98,11 +105,16 @@ module CliDistribution
 
       assets = release.fetch("assets", nil)
       fail_at("release.assets", "must be an array") unless assets.is_a?(Array)
-      actual_names = assets.map.with_index do |asset, index|
+      actual_assets = assets.map.with_index do |asset, index|
         validate_asset(asset, index, version, configuration.source_repository)
       end
+      actual_names = actual_assets.map { |asset| asset.fetch("name") }
       unless actual_names.sort == expected_assets.sort && actual_names.uniq.length == actual_names.length
         fail_at("release.assets", "does not match release evidence")
+      end
+      actual_assets.each do |asset|
+        digest = Digest::SHA256.file(regular_file(root/asset.fetch("name"), "release asset")).hexdigest
+        equal(asset.fetch("digest"), "sha256:#{digest}", "release asset digest")
       end
 
       subjects = evidence.fetch("subjects")
@@ -142,6 +154,23 @@ module CliDistribution
       fail_at("release bundle", "contains missing or invalid JSON fields")
     end
 
+    def verify_tag!(reference, tag, version:, source_sha:)
+      fail_at("tag reference", "must be an object") unless reference.is_a?(Hash)
+      equal(reference.fetch("ref", nil), "refs/tags/cli-v#{version}", "tag reference.ref")
+      reference_object = reference.fetch("object", nil)
+      fail_at("tag reference.object", "must be an object") unless reference_object.is_a?(Hash)
+      equal(reference_object.fetch("type", nil), "tag", "tag reference.object.type")
+      tag_sha = pattern(reference_object.fetch("sha", nil), COMMIT, "tag reference.object.sha")
+
+      fail_at("tag object", "must be an object") unless tag.is_a?(Hash)
+      equal(tag.fetch("tag", nil), "cli-v#{version}", "tag object.tag")
+      equal(tag.fetch("sha", nil), tag_sha, "tag object.sha")
+      target = tag.fetch("object", nil)
+      fail_at("tag object.object", "must be an object") unless target.is_a?(Hash)
+      equal(target.fetch("type", nil), "commit", "tag object.object.type")
+      equal(target.fetch("sha", nil), source_sha, "tag object.object.sha")
+    end
+
     def validate_asset(asset, index, version, repository)
       path = "release.assets[#{index}]"
       fail_at(path, "must be an object") unless asset.is_a?(Hash)
@@ -150,12 +179,13 @@ module CliDistribution
       equal(asset.fetch("state", nil), "uploaded", "#{path}.state")
       api_url = safe_string(asset.fetch("url", nil), "#{path}.url")
       browser_url = safe_string(asset.fetch("browser_download_url", nil), "#{path}.browser_download_url")
+      digest = pattern(asset.fetch("digest", nil), /\Asha256:[a-f0-9]{64}\z/, "#{path}.digest")
       unless %r{\Ahttps://api\.github\.com/repos/#{Regexp.escape(repository)}/releases/assets/[1-9]\d*\z}.match?(api_url)
         fail_at("#{path}.url", "must be the exact source release asset API URL")
       end
       expected_browser = "https://github.com/#{repository}/releases/download/cli-v#{version}/#{name}"
       equal(browser_url, expected_browser, "#{path}.browser_download_url")
-      name
+      { "name" => name, "digest" => digest }
     end
 
     def safe_file_name?(value)
@@ -233,7 +263,7 @@ module CliDistribution
 
     def run(argv)
       allowed = %w[
-        --release --directory --config --version --source-sha
+        --release --tag-reference --tag-object --directory --config --version --source-sha
         --authorization-sha --output
       ]
       fail_at("arguments", "must be option/value pairs") unless argv.length == allowed.length * 2
@@ -246,6 +276,8 @@ module CliDistribution
 
       result = verify!(
         release: read_json(values.fetch("--release"), "release"),
+        tag_reference: read_json(values.fetch("--tag-reference"), "tag reference"),
+        tag_object: read_json(values.fetch("--tag-object"), "tag object"),
         directory: values.fetch("--directory"),
         config: read_json(values.fetch("--config"), "configuration"),
         expected: {

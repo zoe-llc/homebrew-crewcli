@@ -90,7 +90,7 @@ class AssertBottleMatrixTest < Minitest::Test
       replace_bottle(
         "macos-arm64",
         "blobUrl",
-        "https://ghcr.io/v2/zoe-llc/homebrew-crewcli/crewent/manifests/latest"
+        "https://ghcr.io/v2/zoe-llc/crewcli/crewent/manifests/latest"
       )
     ]
 
@@ -108,7 +108,7 @@ class AssertBottleMatrixTest < Minitest::Test
       replace_bottle(
         "macos-arm64",
         "blobUrl",
-        "https://token@ghcr.io/v2/zoe-llc/homebrew-crewcli/crewent/blobs/sha256:#{"5" * 64}"
+        "https://token@ghcr.io/v2/zoe-llc/crewcli/crewent/blobs/sha256:#{"5" * 64}"
       )
     ]
 
@@ -155,7 +155,7 @@ class AssertBottleMatrixTest < Minitest::Test
         "tag" => target_values.fetch("bottleTag", "x86_64_linux"),
         "fileName" => "crewent--0.1.0.#{target_values.fetch("bottleTag", "x86_64_linux")}.bottle.tar.gz",
         "sha256" => digest,
-        "blobUrl" => "https://ghcr.io/v2/zoe-llc/homebrew-crewcli/crewent/blobs/sha256:#{digest}"
+        "blobUrl" => "https://ghcr.io/v2/zoe-llc/crewcli/crewent/blobs/sha256:#{digest}"
       }
     }
   end
