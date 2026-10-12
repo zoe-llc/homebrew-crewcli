@@ -43,6 +43,7 @@ jobs:
           ruby -Itest test/assert_bottle_matrix_test.rb
           ruby -Itest test/assert_ghcr_readback_test.rb
           ruby -Itest test/bottle_workflow_test.rb
+          ruby -Itest test/rename_rehearsal_test.rb
 
       - name: Verify the checked-in Formula is deterministic
         run: |

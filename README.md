@@ -19,6 +19,7 @@ ruby -Itest test/verify_activation_window_test.rb
 ruby -Itest test/verify_release_bundle_test.rb
 ruby -Itest test/assert_bottle_matrix_test.rb
 ruby -Itest test/bottle_workflow_test.rb
+ruby -Itest test/rename_rehearsal_test.rb
 ruby scripts/import_release.rb check \
   --config config/distribution.json \
   --manifest test/fixtures/crewcli.distribution-release.v1.json \
@@ -32,4 +33,4 @@ manual import workflowはexact SemVerからimmutable `cli-v<version>` releaseを
 installation tokenで`distribution-release.json`だけをdownloadしてFormula候補を検証する。
 stable Formulaのcommitやpromotionは行わない。
 
-認証境界と利用者手順は[Private Tap access](docs/operations/private-access.md)、復旧は[Rollback](docs/operations/rollback.md)を参照する。
+認証境界と利用者手順は[Private Tap access](docs/operations/private-access.md)、将来の名称変更は[Rename](docs/operations/rename.md)、復旧は[Rollback](docs/operations/rollback.md)を参照する。
