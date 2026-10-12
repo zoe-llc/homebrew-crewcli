@@ -42,6 +42,13 @@ class PromotionWorkflowTest < Minitest::Test
     end
   end
 
+  def test_links_expected_evidence_to_the_exact_bottle_candidate
+    assert_includes @source, '.bottleRunAttempt == $bottleRunAttempt'
+    assert_includes @source, '.bottleWorkflowSha == $bottleWorkflowSha'
+    assert_includes @source, '.bottles == $bottles'
+    assert_includes @source, 'jq -c \'[.bottles[] | {key:.target,value:.bottle.sha256}] | from_entries\''
+  end
+
   def test_separates_read_only_verification_from_the_single_write_job
     assert_match(/^  verify:\n(?:.|\n)*?    permissions:\n      actions: read\n      contents: read/m, @source)
     assert_match(/^  promote:\n    needs: verify/m, @source)

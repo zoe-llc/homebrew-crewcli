@@ -138,7 +138,10 @@ jobs:
             --arg manifestSha256 "$(jq -r .manifestSha256 "$candidate")" \
             --arg formulaSha256 "$(jq -r .candidateFormulaSha256 "$candidate")" \
             --arg bottleMatrixSha256 "$(jq -r .bottleMatrixSha256 "$candidate")" \
-            '.schema == "crewcli.homebrew-distribution-canary-expected/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and .workflowRunId == $distributionCanaryRunId and .artifactSha256 == $artifactSha256 and .manifestSha256 == $manifestSha256 and .formulaSha256 == $formulaSha256 and .bottleMatrixSha256 == $bottleMatrixSha256' \
+            --argjson bottleRunAttempt "$(jq -r .bottleRunAttempt "$candidate")" \
+            --arg bottleWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
+            --argjson bottles "$(jq -c '[.bottles[] | {key:.target,value:.bottle.sha256}] | from_entries' "$bottle_matrix")" \
+            '.schema == "crewcli.homebrew-distribution-canary-expected/v1" and .version == $version and .sourceSha == $sourceSha and .authorizationSha == $authorizationSha and .bottleRunId == $bottleRunId and .bottleRunAttempt == $bottleRunAttempt and .bottleWorkflowSha == $bottleWorkflowSha and .workflowRunId == $distributionCanaryRunId and .artifactSha256 == $artifactSha256 and .manifestSha256 == $manifestSha256 and .formulaSha256 == $formulaSha256 and .bottleMatrixSha256 == $bottleMatrixSha256 and .bottles == $bottles' \
             "$expected"
           jq -e \
             --arg bottleWorkflowSha "$(jq -r .tapWorkflowSha "$candidate")" \
