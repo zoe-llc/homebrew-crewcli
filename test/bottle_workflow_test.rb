@@ -29,6 +29,7 @@ class BottleWorkflowTest < Minitest::Test
     assert_includes source, "permission-contents: read"
     assert_includes source, "crewent-distribution-reader"
     assert_includes source, "scripts/verify_release_bundle.rb"
+    assert_includes source, "scripts/verify_activation_window.rb"
     assert_includes source, "release-evidence.json"
     assert_includes source, "distribution-release.json"
     assert_includes source, "authorizationSha"
