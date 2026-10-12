@@ -1,16 +1,13 @@
-# Manual: fetch distribution manifest from private zoe-llc/crewcli using CLI Distribution Reader App.
-# Secrets (set via crewcli: pnpm cli-distribution-reader:sync-tap-secrets):
-#   CLI_DISTRIBUTION_READER_APP_ID
-#   CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY
-#   CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID
+# Manual, read-only import from an exact private zoe-llc/crewcli Immutable Release.
+# Secrets are synchronized only after source-side App scope verification.
 
 name: Import distribution manifest
 
 on:
   workflow_dispatch:
     inputs:
-      manifest_path:
-        description: "Path in source repo (e.g. releases/download/cli-v0.1.0/distribution-release.json)"
+      version:
+        description: "Exact CLI SemVer (for example 0.1.0)"
         required: true
         type: string
 
@@ -19,39 +16,63 @@ permissions:
 
 jobs:
   import:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out the exact Tap revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/create-github-app-token@v1
+      - name: Create source read token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
           app-id: ${{ secrets.CLI_DISTRIBUTION_READER_APP_ID }}
           private-key: ${{ secrets.CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY }}
           owner: zoe-llc
           repositories: crewcli
+          permission-contents: read
 
-      - name: Download manifest from source repository
+      - name: Verify the exact App installation
         env:
-          MANIFEST_PATH: ${{ inputs.manifest_path }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ACTUAL_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          ACTUAL_INSTALLATION_ID: ${{ steps.app-token.outputs.installation-id }}
+          EXPECTED_INSTALLATION_ID: ${{ secrets.CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID }}
         run: |
           set -euo pipefail
-          url="https://api.github.com/repos/zoe-llc/crewcli/contents/${MANIFEST_PATH}"
-          curl -fsSL \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "$url" \
-            | node -e "
-              const fs = require('fs');
-              const body = JSON.parse(fs.readFileSync(0, 'utf8'));
-              if (!body.content) throw new Error('manifest not found or not a file');
-              fs.writeFileSync('manifest.json', Buffer.from(body.content, 'base64'));
-            "
-          ruby -Itest test/distribution_manifest_test.rb
-          ruby scripts/import_release.rb \
+          test "$ACTUAL_APP_SLUG" = "crewent-distribution-reader"
+          test "$ACTUAL_INSTALLATION_ID" = "$EXPECTED_INSTALLATION_ID"
+
+      - name: Download and validate the exact immutable manifest
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || [[ "$VERSION" = "0.0.0" ]]; then
+            echo "version must be an exact non-placeholder SemVer" >&2
+            exit 1
+          fi
+
+          tag="cli-v${VERSION}"
+          release_json="$RUNNER_TEMP/source-release.json"
+          manifest="$RUNNER_TEMP/distribution-release.json"
+          formula="$RUNNER_TEMP/crewent.rb"
+
+          gh api "repos/zoe-llc/crewcli/releases/tags/${tag}" >"$release_json"
+          asset_url="$(ruby scripts/select_release_asset.rb \
             --config config/distribution.json \
-            --manifest manifest.json \
-            --output /tmp/Formula.crewcli.rb
-          echo "Formula candidate written to /tmp/Formula.crewcli.rb (not committed by this workflow)."
+            --release "$release_json" \
+            --version "$VERSION")"
+          gh api -H "Accept: application/octet-stream" "$asset_url" >"$manifest"
+
+          ruby scripts/import_release.rb render \
+            --config config/distribution.json \
+            --manifest "$manifest" \
+            --output "$formula"
+          ruby -c "$formula"
+          (cd "$RUNNER_TEMP" && sha256sum distribution-release.json crewent.rb)
+
+          echo "Validated the exact ${tag} manifest and Crewent Formula candidate."
