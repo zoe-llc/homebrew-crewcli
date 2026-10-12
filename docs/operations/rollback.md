@@ -6,6 +6,7 @@
 - stable Formulaの変更は通常PR、blocking CI、exact repository approval recordを通す。現行GitHub Freeではprotected environmentを前提にせず、将来Enterpriseへ移行した後に`stable-promotion` environmentを追加する。
 - rollback先は同じmanifest、Formula commit、3 bottle digest、4環境canaryがすべてPASSした直前versionに限る。
 - npm dist-tagやnpm packageは変更しない。
+- 初回stable promotionは4環境matrixを再検証した通常PRだけで行い、promotion workflowは自動mergeしない。
 
 ## 初回提供前または初回canary失敗
 
@@ -29,3 +30,7 @@ crewcli --version
 5. runtime A/B/Cとuninstall/reinstallを再確認し、4環境が揃った時点だけrollback完了とする。
 
 一部環境だけをpromoteまたはrollbackしてはならない。bottle欠落やdigest driftがある場合はsource fallbackへ切り替えず、stableを直前verified commitへ戻す。
+
+実行中の候補で失敗した場合は、`brew uninstall crewent`と`brew untap zoe-llc/crewcli`でcleanな
+未提供状態へ戻す。A/B後に作ったstale-ready tagやcanary evidenceを次のrunへ流用せず、新しいrun ID、
+authorization window、4件のfresh evidenceを使う。

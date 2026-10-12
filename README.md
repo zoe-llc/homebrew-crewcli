@@ -4,7 +4,7 @@ Crewent CLIのprivate Homebrew Tapである。provider-neutralなrelease manifes
 
 ## 現在の状態
 
-2026-10-12時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import、3 target bottle build/publish contractは実装済みである。Distribution Reader credentialは設定済みだが、source Release、private GHCR bottle、4環境canaryは未実行であり、employee向け提供は開始していない。
+2026-10-12時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import、3 target bottle build/publish contract、4環境consumer canary、stable promotion PR contractは実装済みである。Distribution Reader credentialは設定済みだが、source Release、private GHCR bottle、platform別credential、Windows 11 + WSL2 runner、実canaryは未実行であり、employee向け提供は開始していない。
 
 ## 検証
 
@@ -19,6 +19,9 @@ ruby -Itest test/verify_activation_window_test.rb
 ruby -Itest test/verify_release_bundle_test.rb
 ruby -Itest test/assert_bottle_matrix_test.rb
 ruby -Itest test/bottle_workflow_test.rb
+ruby -Itest test/assert_canary_matrix_test.rb
+ruby -Itest test/canary_workflow_test.rb
+ruby -Itest test/promotion_workflow_test.rb
 ruby scripts/import_release.rb check \
   --config config/distribution.json \
   --manifest test/fixtures/crewcli.distribution-release.v1.json \
@@ -32,4 +35,4 @@ manual import workflowはexact SemVerからimmutable `cli-v<version>` releaseを
 installation tokenで`distribution-release.json`だけをdownloadしてFormula候補を検証する。
 stable Formulaのcommitやpromotionは行わない。
 
-認証境界と利用者手順は[Private Tap access](docs/operations/private-access.md)、復旧は[Rollback](docs/operations/rollback.md)を参照する。
+認証境界と利用者手順は[Private Tap access](docs/operations/private-access.md)、4環境の実行手順は[canaryとpromotion](docs/operations/canary-and-promotion.md)、復旧は[Rollback](docs/operations/rollback.md)を参照する。現在の実Activation判定は[consumer activation evidence](docs/verification/consumer-activation.md)にある。

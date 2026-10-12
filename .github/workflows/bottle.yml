@@ -366,6 +366,13 @@ jobs:
           brew bottle --merge --write --no-commit "${bottle_json[@]}"
 
       - name: Package the immutable local candidate before publication
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.sourceSha }}
+          AUTHORIZATION_SHA: ${{ inputs.authorizationSha }}
+          ARTIFACT_SHA256: ${{ needs.preflight.outputs.artifact-sha256 }}
+          MANIFEST_SHA256: ${{ needs.preflight.outputs.manifest-sha256 }}
+          SOURCE_FORMULA_SHA256: ${{ needs.preflight.outputs.formula-sha256 }}
         run: |
           set -euo pipefail
           candidate="$RUNNER_TEMP/bottle-candidate"
@@ -376,6 +383,22 @@ jobs:
           cp docs/verification/bottle-build-0.1.0.md "$candidate/docs/verification/"
           git diff -- Formula/crewent.rb > "$candidate/Formula/crewent.rb.patch"
           test -s "$candidate/Formula/crewent.rb.patch"
+          candidate_formula_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$candidate/Formula/crewent.rb")"
+          bottle_matrix_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$candidate/metadata/bottle-matrix.json")"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg sourceSha "$SOURCE_SHA" \
+            --arg authorizationSha "$AUTHORIZATION_SHA" \
+            --arg artifactSha256 "$ARTIFACT_SHA256" \
+            --arg manifestSha256 "$MANIFEST_SHA256" \
+            --arg sourceFormulaSha256 "$SOURCE_FORMULA_SHA256" \
+            --arg candidateFormulaSha256 "$candidate_formula_sha256" \
+            --arg bottleMatrixSha256 "$bottle_matrix_sha256" \
+            --arg bottleRunId "$GITHUB_RUN_ID" \
+            --argjson bottleRunAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg tapWorkflowSha "$GITHUB_SHA" \
+            '{schema:"crewcli.homebrew-bottle-candidate/v1",version:$version,sourceSha:$sourceSha,authorizationSha:$authorizationSha,artifactSha256:$artifactSha256,manifestSha256:$manifestSha256,sourceFormulaSha256:$sourceFormulaSha256,candidateFormulaSha256:$candidateFormulaSha256,bottleMatrixSha256:$bottleMatrixSha256,bottleRunId:$bottleRunId,bottleRunAttempt:$bottleRunAttempt,tapWorkflowSha:$tapWorkflowSha,workflowPath:".github/workflows/bottle.yml",workflowEvent:"workflow_dispatch",workflowBranch:"main"}' \
+            > "$candidate/metadata/candidate.json"
 
       - name: Validate the separate GHCR consumer credential before publication
         env:

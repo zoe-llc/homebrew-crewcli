@@ -82,6 +82,14 @@ class BottleWorkflowTest < Minitest::Test
     assert_includes source, "--no-commit"
     assert_includes source, "actions/upload-artifact@"
     assert_includes source, "bottle-candidate"
+    assert_includes source, "candidate.json"
+    assert_includes source, "candidateFormulaSha256"
+    assert_includes source, "bottleRunId"
+    assert_includes source, "bottleRunAttempt"
+    assert_includes source, "tapWorkflowSha"
+    assert_includes source, 'workflowPath:".github/workflows/bottle.yml"'
+    assert_includes source, 'workflowEvent:"workflow_dispatch"'
+    assert_includes source, 'workflowBranch:"main"'
   end
 
   def test_proves_private_linked_oci_manifests_with_a_separate_read_only_consumer

@@ -57,6 +57,11 @@ source fallback、Formula commit、stable promotionは行わない。
 
 インストール後の`crewent login`はproduct runtime credentialを作る。これはTap Git read、GHCR read、GitHub Appのどれとも共有しない。移行期間は`crewcli` commandも同じentry pointへの互換aliasとして提供する。
 
+自動canaryではOS secure storeを前提にせず、platform専用の短命tokenを
+`CREWCLI_CANARY_ACCESS_TOKEN`としてharnessだけへ渡す。harnessはinstalled CLI子processに限って
+`CREWCLI_ACCESS_TOKEN`へ写し、Git preflightやevidenceへ渡さない。secret名と実行手順は
+[4環境canaryとstable promotion](canary-and-promotion.md)を参照する。
+
 ## 更新と削除
 
 旧`crewcli` Formulaを導入済みの端末でも、`brew update`がrootの`formula_renames.json`にある`crewcli`から`crewent`への直接renameを読み取る。旧Formulaを併存させず、そのまま新しい正式名をupgrade対象にする。
