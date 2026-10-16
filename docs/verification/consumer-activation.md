@@ -2,55 +2,39 @@
 
 ## 判定
 
-2026-10-17時点: **実装 PASS / 実Activation BLOCKED**。
+2026-10-17 時点: **準備実装 PASS / 実 Activation BLOCKED**。
 
-## 実装済み
+## 準備済みの境界
 
-- exact bottle candidate metadata（candidate Formula、source Formula、manifest、artifact、matrix digest）
-- bottle / distribution canary producer runのworkflow path、event、branch、head SHA、attempt、success照合
-- macOS ARM64、Linux x86_64、Linux ARM64の固定3環境workflow
-- 実OS / CPU architectureのattestation
-- public Tapのanonymous repository API read-back、token環境 / credential helperを無効化したexact detached clone
-- private GHCR readを`CLI_GHCR_READ_USER` / `CLI_GHCR_READ_TOKEN`の2件だけへ限定したcredential境界
-- bottle read-back用`GHCR_READ_USER` / `GHCR_READ_PAT`との用途分離
-- private GHCRのauthenticated session logout後にexact version / digestのanonymous pullを拒否するclosed evidence
-- anonymous Tap + authenticated private GHCR、`--force-bottle`によるsource fallback拒否
-- primary command、help、compatibility alias、uninstall、reinstall、clean rollback
-- missing / duplicate / N/A / stale / identity drift / sensitive dataを拒否するclosed matrix
-- read-only検証jobとwrite jobを分離し、exact source authorizationをwrite直前に再検証するpromotion
-- exact promotion commitの`validate.yml`成功後だけstable promotion PRを作り、自動mergeしないworkflow
-- public PR validationを`contents: read`だけにし、manual mutation、package、repository secret、App keyから分離する横断policy test
-
-Homebrew側はCrewent製品canaryを実行しない。Hosted、Product、Change Intent、Context Handoff、A/B/C、
-stale no-rebindはsource repositoryの独立gateである。distribution PASSは製品PASSを意味しない。
+- public Tap は `Formula/crewent.rb`、`formula_renames.json`、公開文書、secret-free `validate.yml` だけを所有する。
+- workflow policy test は追加 workflow、write / package permission、secret参照、artifact transfer、mutationを拒否する。
+- manual public smoke は repository ID、public visibility、default branch、exact main SHA、raw Formula digest、anonymous `git clone --no-tags`、anonymous `brew tap` を検証する。
+- private source read、bottle build / publish、private GHCR read-back、candidate draft PR、3 target distribution canary、final activation検証は private `zoe-llc/crewcli-distribution` が所有する。
+- Tap Publisherとsource Readerは別GitHub Appで、stable PRをworkflowからmergeしない。
 
 ローカル証拠:
 
 ```sh
-ruby -Itest test/assert_canary_matrix_test.rb
-ruby -Itest test/canary_workflow_test.rb
-ruby -Itest test/promotion_workflow_test.rb
-ruby -Itest test/assert_ghcr_readback_test.rb
-ruby -Itest test/bottle_workflow_test.rb
-ruby -Itest test/rename_rehearsal_test.rb
-ruby -Itest test/public_repository_policy_test.rb
-actionlint .github/workflows/bottle.yml .github/workflows/canary.yml .github/workflows/promote.yml
+find test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
+for test_file in test/*_test.rb; do ruby -Itest "$test_file"; done
+actionlint
+! rg -n 'secrets\.|packages:|upload-artifact|download-artifact|pull_request_target' .github/workflows
+git diff --check
 ```
 
-## 未実行の外部gate
+ローカル検証は実 Activation の代替ではありません。
 
-- Tap全履歴・Actions log / artifact・issue / PR・author metadataのPhase A監査
-- repository ID `1414534332`を維持したpublic visibility変更、anonymous clone、protection / Actions read-back
-- Organization package permission inheritance無効化
-- exact source Immutable Releaseと3 private GHCR bottles
-- bottle read-back用`GHCR_READ_USER` / `GHCR_READ_PAT`
-- distribution canary用`CLI_GHCR_READ_USER` / `CLI_GHCR_READ_TOKEN`
-- private package visibility、Tap link、permission非継承、anonymous pull拒否、approved reader成功
-- exact dispatch対象と実施時間を固定したsource authorization window
-- 3環境の実workflow runと`distribution-canary-evidence` artifact
-- promotion PRのCI、review、merge
+## 未実行の外部 gate
 
-これらをローカルtestでPASSとみなさない。実run ID、exact identity、artifact URLは実行後に本書へ追記する。
+- Tap 全履歴・Actions log / artifact・issue / PR・author metadata の公開前監査
+- 旧source Reader repository secret 3件の削除とsecret inventory 0件のread-back
+- repository ID `1414534332`を維持したpublic visibility変更とanonymous read-back
+- source Immutable Release と3 target private GHCR bottle
+- package permission inheritance無効化、private visibility、private automation link、public Tap access不在
+- tag / digest双方のanonymous pull拒否と用途分離したapproved reader成功
+- public Tap candidate draft PRとexact head SHA
+- macOS ARM64、Linux x86_64、Linux ARM64の実distribution canary
+- 全10 Gate `PASS` のfinal activation window
+- stable Formula PRのCI、review、明示merge
 
-Windows 11 + WSL2は初回blocking targetではなく未検証である。独立compatibility workflowによる証拠が
-できるまでWindows対応済みとは表示しない。
+これらは実 run ID、exact SHA / digest、artifact URLを取得してから別のPhase 0 evidenceへ記録します。Windows / WSL2は初回blocking targetではなく未検証です。

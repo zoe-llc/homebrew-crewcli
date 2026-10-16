@@ -1,4 +1,4 @@
-name: Validate Tap
+name: Validate public Tap
 
 on:
   pull_request:
@@ -20,41 +20,23 @@ jobs:
       - name: Check out the exact revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Set up Homebrew
+      - name: Set up Homebrew without GitHub credentials
         uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
         with:
-          token: ${{ github.token }}
+          token: ""
+          brew-gh-api-token: ""
 
       - name: Check Ruby syntax
-        run: find lib scripts test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
+        run: find test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
 
-      - name: Run all repository contracts
+      - name: Run the Formula-only repository contracts
         run: |
-          ruby -Itest test/distribution_manifest_test.rb
-          ruby -Itest test/formula_renderer_test.rb
           ruby -Itest test/formula_renames_test.rb
-          ruby -Itest test/import_release_test.rb
-          ruby -Itest test/release_asset_test.rb
-          ruby -Itest test/import_manifest_workflow_test.rb
-          ruby -Itest test/verify_activation_window_test.rb
-          ruby -Itest test/verify_release_bundle_test.rb
-          ruby -Itest test/assert_bottle_matrix_test.rb
-          ruby -Itest test/assert_ghcr_readback_test.rb
-          ruby -Itest test/bottle_workflow_test.rb
-          ruby -Itest test/assert_canary_matrix_test.rb
-          ruby -Itest test/canary_workflow_test.rb
-          ruby -Itest test/promotion_workflow_test.rb
-          ruby -Itest test/rename_rehearsal_test.rb
+          ruby -Itest test/formula_policy_test.rb
           ruby -Itest test/public_repository_policy_test.rb
-
-      - name: Verify the checked-in Formula is deterministic
-        run: |
-          ruby scripts/import_release.rb check \
-            --config config/distribution.json \
-            --manifest test/fixtures/crewcli.distribution-release.v1.json \
-            --output Formula/crewent.rb >/dev/null
 
       - name: Reject committed credentials
         run: |
@@ -78,9 +60,14 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.repository.visibility == 'public'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
     steps:
-      - name: Set up Homebrew without repository credentials
+      - name: Set up Homebrew without GitHub credentials
         uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
+        with:
+          token: ""
+          brew-gh-api-token: ""
 
       - name: Verify anonymous exact Tap access
         run: |
@@ -103,6 +90,15 @@ jobs:
             "https://raw.githubusercontent.com/zoe-llc/homebrew-crewcli/${GITHUB_SHA}/Formula/crewent.rb" \
             > "$RUNNER_TEMP/expected-crewent.rb"
           expected_formula_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$RUNNER_TEMP/expected-crewent.rb")"
+
+          git config --global --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
+          test -z "$(git config --global --get-all http.https://github.com/.extraheader || true)"
+          clone_root="$RUNNER_TEMP/homebrew-crewcli"
+          env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN GIT_TERMINAL_PROMPT=0 \
+            git clone --no-tags -c credential.helper= https://github.com/zoe-llc/homebrew-crewcli.git "$clone_root"
+          git -C "$clone_root" checkout --detach "$GITHUB_SHA"
+          test "$(git -C "$clone_root" rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$clone_root/Formula/crewent.rb")" = "$expected_formula_sha256"
 
           brew untap zoe-llc/crewcli >/dev/null 2>&1 || true
           env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN \

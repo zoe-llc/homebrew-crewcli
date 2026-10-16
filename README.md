@@ -1,45 +1,29 @@
 # homebrew-crewcli
 
-Crewent CLIのpublic metadata / private bottle Homebrew Tapである。provider-neutralなrelease manifestを入力に、決定的なFormula候補を生成する。source repositoryのrelease producer、Tap adapter、private GHCR bottle、consumer canaryを分離し、名称変更後も`phase2-cli` release identityと旧immutable artifactを保持する。Tap repository名と内部schema名は互換性のため`crewcli`を維持する。
+Crewent CLI の Formula-only Homebrew Tap です。公開後は Formula、rename mapping、公開可能な検証 metadata を匿名で配布し、bottle payload は private GHCR に保持します。Tap の公開は Crewent source、Release asset、CLI 自体の一般公開、OSS 化、公開ライセンス付与を意味しません。
 
 ## 現在の状態
 
-2026-10-17時点ではPre-Activationである。parser、Formula renderer、source fallback拒否、current/alternate name fixture、exact Immutable Release manifest import、3 target bottle build/publish contract、匿名Tap + private GHCRの3環境distribution canary、stable promotion PR contractは実装済みである。Distribution Reader credentialは設定済みだが、Tapの公開前監査とvisibility変更、Organization package permission非継承、source Release、private GHCR bottle、用途分離したGHCR read credential 4件、実canaryは未実行であり、employee向け提供は開始していない。
+2026-10-17 時点では Phase 0 の準備中で、repository visibility は private のままです。Release、tag、GHCR package、実 canary、stable Formula promotion は実施していません。
 
-Tapがpublicになっても、Crewent source、Immutable Release asset、GHCR payloadがpublicになるわけではなく、OSS化または公開ライセンス付与を意味しない。
+tracked code が保持する実行面は secret-free な `.github/workflows/validate.yml` だけです。既存の Tap repository settings には source Reader secret 3件がまだ残っており、このPRでは変更しません。public化前に別の明示承認で削除し、0件をread backする必要があります。次の capability は private [`zoe-llc/crewcli-distribution`](https://github.com/zoe-llc/crewcli-distribution) が所有します。
 
-Homebrew側はmacOS ARM64、Linux x86_64、Linux ARM64のinstall lifecycleだけを証明する。Hosted、Product、Change Intent、Context Handoffを検証するCrewent製品canaryはsource repositoryが独立して所有する。Windows / WSL2は未検証であり、対応済みとは扱わない。
+- private source Release の読み取り
+- 3 target bottle の build と private GHCR publish
+- public Tap candidate の draft PR 作成
+- macOS ARM64、Linux x86_64、Linux ARM64 の distribution canary
+- final activation evidence の検証と draft PR の更新
 
-## 検証
+public化後の Tap は repository secret、package permission、protected Actions artifact、private App key、GHCR credential、mutation workflow を持ちません。stable Formula PR の merge は自動化しません。
+
+## ローカル検証
 
 ```sh
-ruby -Itest test/distribution_manifest_test.rb
-ruby -Itest test/formula_renderer_test.rb
-ruby -Itest test/formula_renames_test.rb
-ruby -Itest test/import_release_test.rb
-ruby -Itest test/release_asset_test.rb
-ruby -Itest test/import_manifest_workflow_test.rb
-ruby -Itest test/verify_activation_window_test.rb
-ruby -Itest test/verify_release_bundle_test.rb
-ruby -Itest test/assert_bottle_matrix_test.rb
-ruby -Itest test/assert_ghcr_readback_test.rb
-ruby -Itest test/bottle_workflow_test.rb
-ruby -Itest test/assert_canary_matrix_test.rb
-ruby -Itest test/canary_workflow_test.rb
-ruby -Itest test/promotion_workflow_test.rb
-ruby -Itest test/rename_rehearsal_test.rb
-ruby -Itest test/public_repository_policy_test.rb
-ruby scripts/import_release.rb check \
-  --config config/distribution.json \
-  --manifest test/fixtures/crewcli.distribution-release.v1.json \
-  --output Formula/crewent.rb
-brew style Formula/crewent.rb
-brew audit --formula --strict zoe-llc/crewcli/crewent
+find test Formula -name '*.rb' -print0 | xargs -0 -n1 ruby -c
+for test_file in test/*_test.rb; do ruby -Itest "$test_file"; done
+actionlint
+! rg -n 'secrets\.|packages:|upload-artifact|download-artifact|pull_request_target' .github/workflows
+git diff --check
 ```
 
-`import_release.rb`はlocal file以外を読まず、GitHub Appやnetwork credentialを所有しない。
-manual import workflowはexact SemVerからimmutable `cli-v<version>` releaseを解決し、read-only
-installation tokenで`distribution-release.json`だけをdownloadしてFormula候補を検証する。
-stable Formulaのcommitやpromotionは行わない。
-
-認証境界と利用者手順は[Public Tap / private GHCR access](docs/operations/public-tap-private-ghcr.md)、canaryとpromotionは[運用手順](docs/operations/canary-and-promotion.md)、将来の名称変更は[Rename](docs/operations/rename.md)、復旧は[Rollback](docs/operations/rollback.md)を参照する。現在の実Activation判定は[consumer activation evidence](docs/verification/consumer-activation.md)にある。
+認証境界と将来の利用手順は [Public Tap / private GHCR access](docs/operations/public-tap-private-ghcr.md)、canary と promotion の所有権は [運用手順](docs/operations/canary-and-promotion.md)、名称変更は [Rename](docs/operations/rename.md)、復旧は [Rollback](docs/operations/rollback.md) を参照してください。実 Activation の未達条件は [consumer activation evidence](docs/verification/consumer-activation.md) にあります。

@@ -4,7 +4,7 @@ require "minitest/autorun"
 
 class PublicRepositoryPolicyTest < Minitest::Test
   WORKFLOW_DIRECTORY = File.expand_path("../.github/workflows", __dir__)
-  MUTATION_WORKFLOWS = %w[bottle.yml canary.yml import-manifest.yml promote.yml].freeze
+  EXPECTED_WORKFLOWS = ["validate.yml"].freeze
 
   def setup
     @workflows = Dir.glob(File.join(WORKFLOW_DIRECTORY, "*.yml")).sort.to_h do |path|
@@ -12,61 +12,87 @@ class PublicRepositoryPolicyTest < Minitest::Test
     end
   end
 
-  def test_forbids_pull_request_target_in_every_workflow
-    @workflows.each do |name, source|
-      refute_match(/^\s*pull_request_target:/, source, name)
-    end
+  def test_live_repository_is_formula_only_and_secret_free
+    assert_empty policy_errors(@workflows)
   end
 
-  def test_mutation_workflows_are_manual_main_only
-    MUTATION_WORKFLOWS.each do |name|
-      source = @workflows.fetch(name)
-      trigger = source.match(/^on:\n(?<body>.*?)^permissions:/m)["body"]
-      assert_match(/^  workflow_dispatch:/, trigger, name)
-      refute_match(/^  (?:pull_request|push):/, trigger, name)
+  def test_rejects_an_additional_pull_request_workflow
+    workflows = @workflows.merge("extra.yml" => workflow.sub("name: Validate Tap", "name: Extra"))
 
-      job_sections(source).each do |job, section|
-        assert_match(
-          /^    if: .*github\.ref == 'refs\/heads\/main'/,
-          section,
-          "#{name}:#{job} must guard exact main"
-        )
-      end
-    end
+    assert_includes policy_errors(workflows), "workflow file set must be exactly validate.yml"
   end
 
-  def test_pull_request_validation_is_read_only_and_secret_free
-    source = @workflows.fetch("validate.yml")
-    assert_match(/^  pull_request:/, source)
-    assert_match(/^permissions:\n  contents: read\n\njobs:/, source)
-    refute_match(/^\s+(?:packages|pull-requests|actions):\s+write\s*$/, source)
-    refute_match(
-      /CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY|GHCR_READ_|CLI_GHCR_READ_|secrets\./,
-      source
+  def test_rejects_top_level_write_permission
+    invalid = workflow.sub("permissions:\n  contents: read", "permissions:\n  contents: write")
+
+    assert_includes policy_errors("validate.yml" => invalid),
+                    "validate.yml: top-level permissions must be contents: read only"
+  end
+
+  def test_rejects_job_level_package_permission_even_when_read_only
+    invalid = workflow.sub(
+      "    runs-on: ubuntu-24.04",
+      "    permissions:\n      packages: read\n    runs-on: ubuntu-24.04"
     )
-    assert_includes source, "ruby -Itest test/public_repository_policy_test.rb"
+
+    assert_includes policy_errors("validate.yml" => invalid),
+                    "validate.yml: packages permission is forbidden"
   end
 
-  def test_write_permissions_are_limited_to_two_manual_jobs
-    observed = @workflows.flat_map do |name, source|
-      job_sections(source).flat_map do |job, section|
-        section.scan(/^      ([a-z-]+): write\s*$/).flatten.map do |permission|
-          [name, job, permission]
-        end
-      end
-    end
-    assert_equal(
-      [
-        ["bottle.yml", "publish", "packages"],
-        ["promote.yml", "promote", "actions"],
-        ["promote.yml", "promote", "contents"],
-        ["promote.yml", "promote", "pull-requests"]
-      ],
-      observed.sort
+  def test_rejects_any_secret_reference
+    invalid = workflow.sub(
+      "  HOMEBREW_NO_AUTO_UPDATE: \"1\"",
+      "  HOMEBREW_NO_AUTO_UPDATE: ${{ secrets.PRIVATE_TOKEN }}"
     )
+
+    assert_includes policy_errors("validate.yml" => invalid),
+                    "validate.yml: secret references are forbidden"
   end
 
-  def test_remote_actions_are_pinned_and_checkout_credentials_are_not_persisted
+  def test_rejects_protected_artifact_actions
+    invalid = workflow.sub(
+      "      - name: Check Ruby syntax",
+      "      - uses: actions/upload-artifact@#{"a" * 40}\n      - name: Check Ruby syntax"
+    )
+
+    assert_includes policy_errors("validate.yml" => invalid),
+                    "validate.yml: workflow artifact transfer is forbidden"
+  end
+
+  def test_validation_triggers_are_closed_and_read_only
+    source = workflow
+    trigger = source.match(/^on:\n(?<body>.*?)^permissions:/m)["body"]
+    assert_match(/^  pull_request:\s*$/, trigger)
+    assert_match(/^  push:\n    branches:\n      - main\s*$/, trigger)
+    assert_match(/^  workflow_dispatch:\s*$/, trigger)
+    refute_match(/^  (?:pull_request_target|schedule|repository_dispatch):/, trigger)
+    refute_match(/^\s+(?:contents|pull-requests|actions|checks):\s+write\s*$/, source)
+    refute_match(/^\s+packages:\s+(?:read|write)\s*$/, source)
+    refute_match(/git\s+push|gh\s+(?:release|pr\s+(?:create|merge))|brew\s+pr-upload/, source)
+  end
+
+  def test_manual_public_smoke_is_anonymous_and_exact
+    smoke = job_sections(workflow).fetch("public-tap-smoke")
+    assert_includes smoke, "github.event_name == 'workflow_dispatch'"
+    assert_includes smoke, "github.ref == 'refs/heads/main'"
+    assert_includes smoke, "github.event.repository.visibility == 'public'"
+    refute_includes smoke, "actions/checkout@"
+    assert_includes smoke, "https://api.github.com/repos/zoe-llc/homebrew-crewcli"
+    assert_includes smoke, ".id == 1414534332"
+    assert_includes smoke, 'test "$observed_sha" = "$GITHUB_SHA"'
+    assert_includes smoke, "git clone --no-tags -c credential.helper="
+    assert_includes smoke, 'git -C "$clone_root" checkout --detach "$GITHUB_SHA"'
+    assert_includes smoke, "brew tap zoe-llc/crewcli"
+    assert_includes smoke, "Digest::SHA256.file"
+    assert_includes smoke, "env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN"
+    assert_includes smoke, "git config --global --unset-all http.https://github.com/.extraheader"
+    assert_includes smoke, 'test -z "$(git config --global --get-all http.https://github.com/.extraheader || true)"'
+    assert_includes smoke, 'token: ""'
+    assert_includes smoke, 'brew-gh-api-token: ""'
+    refute_match(/secrets\.|Authorization:/, smoke)
+  end
+
+  def test_remote_actions_are_pinned_and_checkout_credentials_do_not_persist
     @workflows.each do |name, source|
       remote_uses = source.scan(/^\s*-?\s*uses:\s*([^\s#]+)/).flatten.reject do |value|
         value.start_with?("./")
@@ -80,22 +106,42 @@ class PublicRepositoryPolicyTest < Minitest::Test
     end
   end
 
-  def test_manual_public_tap_smoke_is_anonymous_and_exact
-    source = @workflows.fetch("validate.yml")
-    smoke = job_sections(source).fetch("public-tap-smoke")
-    assert_includes smoke, "github.event_name == 'workflow_dispatch'"
-    assert_includes smoke, "github.ref == 'refs/heads/main'"
-    assert_includes smoke, "github.event.repository.visibility == 'public'"
-    assert_includes smoke, "https://api.github.com/repos/zoe-llc/homebrew-crewcli"
-    assert_includes smoke, ".id == 1414534332"
-    assert_includes smoke, 'test "$observed_sha" = "$GITHUB_SHA"'
-    assert_includes smoke, "brew tap zoe-llc/crewcli"
-    assert_includes smoke, "Digest::SHA256.file"
-    assert_includes smoke, "if: always()"
-    refute_match(/secrets\.|Authorization:|http\.extraheader/, smoke)
+  private
+
+  def workflow
+    @workflows.fetch("validate.yml")
   end
 
-  private
+  def policy_errors(workflows)
+    errors = []
+    unless workflows.keys.sort == EXPECTED_WORKFLOWS
+      errors << "workflow file set must be exactly validate.yml"
+    end
+    workflows.each do |name, source|
+      unless source.match?(/^permissions:\n  contents: read\n\njobs:/)
+        errors << "#{name}: top-level permissions must be contents: read only"
+      end
+      if source.match?(/^\s+packages:\s+(?:read|write)\s*$/)
+        errors << "#{name}: packages permission is forbidden"
+      end
+      if source.match?(/\$\{\{\s*secrets\./)
+        errors << "#{name}: secret references are forbidden"
+      end
+      if source.match?(/actions\/(?:upload|download)-artifact@/)
+        errors << "#{name}: workflow artifact transfer is forbidden"
+      end
+      if source.match?(/^\s*pull_request_target:/)
+        errors << "#{name}: pull_request_target is forbidden"
+      end
+      if source.match?(/^\s+(?:contents|pull-requests|actions|checks):\s+write\s*$/)
+        errors << "#{name}: write permissions are forbidden"
+      end
+      if source.match?(/git\s+push|gh\s+(?:release|pr\s+(?:create|merge))|brew\s+pr-upload/)
+        errors << "#{name}: repository mutation is forbidden"
+      end
+    end
+    errors.uniq
+  end
 
   def job_sections(source)
     jobs = source.split(/^jobs:\n/, 2).fetch(1)
