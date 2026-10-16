@@ -8,7 +8,7 @@ class ReleaseAssetTest < Minitest::Test
   CONFIG = {
     "schema" => "crewcli.homebrew-distribution/v1",
     "releaseId" => "phase2-cli",
-    "sourceRepository" => "zoe-llc/crewcli",
+    "sourceRepository" => "zoe-llc/crewent",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
     "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
@@ -16,7 +16,7 @@ class ReleaseAssetTest < Minitest::Test
 
   def test_selects_the_exact_manifest_asset_from_an_immutable_release
     assert_equal(
-      "https://api.github.com/repos/zoe-llc/crewcli/releases/assets/123",
+      "https://api.github.com/repos/zoe-llc/crewent/releases/assets/123",
       CliDistribution::ReleaseAsset.manifest_asset_url(
         release,
         config: CONFIG,
@@ -47,7 +47,7 @@ class ReleaseAssetTest < Minitest::Test
       release.merge("assets" => [manifest, manifest.merge("id" => 124)]),
       release.merge("assets" => [manifest.merge("state" => "new")]),
       release.merge("assets" => [manifest.merge("url" => "https://api.github.com/repos/zoe-llc/other/releases/assets/123")]),
-      release.merge("assets" => [manifest.merge("browser_download_url" => "https://token@github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/distribution-release.json")])
+      release.merge("assets" => [manifest.merge("browser_download_url" => "https://token@github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/distribution-release.json")])
     ]
 
     invalid.each do |value|
@@ -73,15 +73,15 @@ class ReleaseAssetTest < Minitest::Test
           "id" => 123,
           "name" => "distribution-release.json",
           "state" => "uploaded",
-          "url" => "https://api.github.com/repos/zoe-llc/crewcli/releases/assets/123",
-          "browser_download_url" => "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/distribution-release.json"
+          "url" => "https://api.github.com/repos/zoe-llc/crewent/releases/assets/123",
+          "browser_download_url" => "https://github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/distribution-release.json"
         },
         {
           "id" => 124,
           "name" => "release-evidence.json",
           "state" => "uploaded",
-          "url" => "https://api.github.com/repos/zoe-llc/crewcli/releases/assets/124",
-          "browser_download_url" => "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/release-evidence.json"
+          "url" => "https://api.github.com/repos/zoe-llc/crewent/releases/assets/124",
+          "browser_download_url" => "https://github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/release-evidence.json"
         }
       ]
     }

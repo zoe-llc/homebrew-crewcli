@@ -1,4 +1,4 @@
-# Manual, read-only import from an exact private zoe-llc/crewcli Immutable Release.
+# Manual, read-only import from an exact private zoe-llc/crewent Immutable Release.
 # Secrets are synchronized only after source-side App scope verification.
 
 name: Import distribution manifest
@@ -32,7 +32,7 @@ jobs:
           app-id: ${{ secrets.CLI_DISTRIBUTION_READER_APP_ID }}
           private-key: ${{ secrets.CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY }}
           owner: zoe-llc
-          repositories: crewcli
+          repositories: crewent
           permission-contents: read
 
       - name: Verify the exact App installation
@@ -61,7 +61,7 @@ jobs:
           manifest="$RUNNER_TEMP/distribution-release.json"
           formula="$RUNNER_TEMP/crewent.rb"
 
-          gh api "repos/zoe-llc/crewcli/releases/tags/${tag}" >"$release_json"
+          gh api "repos/zoe-llc/crewent/releases/tags/${tag}" >"$release_json"
           asset_url="$(ruby scripts/select_release_asset.rb \
             --config config/distribution.json \
             --release "$release_json" \

@@ -74,6 +74,11 @@ class PromotionWorkflowTest < Minitest::Test
     assert_operator validation_success, :<, create
     assert_equal 1, @source.scan("push origin").length
     refute_match(/gh\s+pr\s+merge|--auto/, @source)
+    assert_includes @source, "repositories: crewent"
+    assert_includes @source, "repos/zoe-llc/crewent/compare/${AUTHORIZATION_SHA}...develop"
+    assert_includes @source, "repos/zoe-llc/crewent/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}"
+    refute_includes @source, "repos/zoe-llc/crewcli/"
+    assert_includes @source, "brew audit --formula --strict zoe-llc/crewcli/crewent"
   end
 
   def test_promotes_only_formula_and_credential_free_distribution_evidence

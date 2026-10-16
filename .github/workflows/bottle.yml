@@ -64,7 +64,7 @@ jobs:
           app-id: ${{ secrets.CLI_DISTRIBUTION_READER_APP_ID }}
           private-key: ${{ secrets.CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY }}
           owner: zoe-llc
-          repositories: crewcli
+          repositories: crewent
           permission-contents: read
 
       - name: Verify the exact App installation
@@ -87,12 +87,12 @@ jobs:
           set -euo pipefail
           release_directory="$RUNNER_TEMP/source-release"
           mkdir -p "$release_directory"
-          gh api "repos/zoe-llc/crewcli/releases/tags/cli-v${VERSION}" > "$release_directory/release.json"
-          gh api "repos/zoe-llc/crewcli/git/ref/tags/cli-v${VERSION}" > "$release_directory/tag-reference.json"
+          gh api "repos/zoe-llc/crewent/releases/tags/cli-v${VERSION}" > "$release_directory/release.json"
+          gh api "repos/zoe-llc/crewent/git/ref/tags/cli-v${VERSION}" > "$release_directory/tag-reference.json"
           tag_sha="$(jq -r '.object.sha' "$release_directory/tag-reference.json")"
-          gh api "repos/zoe-llc/crewcli/git/tags/${tag_sha}" > "$release_directory/tag-object.json"
-          gh api "repos/zoe-llc/crewcli/compare/${AUTHORIZATION_SHA}...develop" > "$release_directory/authorization-develop-compare.json"
-          gh api "repos/zoe-llc/crewcli/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$release_directory/source-authorization-compare.json"
+          gh api "repos/zoe-llc/crewent/git/tags/${tag_sha}" > "$release_directory/tag-object.json"
+          gh api "repos/zoe-llc/crewent/compare/${AUTHORIZATION_SHA}...develop" > "$release_directory/authorization-develop-compare.json"
+          gh api "repos/zoe-llc/crewent/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$release_directory/source-authorization-compare.json"
           jq -n \
             --arg authorizationSha "$AUTHORIZATION_SHA" \
             --arg authorizationMergeBase "$(jq -r '.merge_base_commit.sha' "$release_directory/authorization-develop-compare.json")" \
@@ -117,7 +117,7 @@ jobs:
           activation_path="docs/verification/cli-internal-activation-window-${VERSION}.json"
           gh api \
             -H "Accept: application/vnd.github.raw+json" \
-            "repos/zoe-llc/crewcli/contents/${activation_path}?ref=${AUTHORIZATION_SHA}" \
+            "repos/zoe-llc/crewent/contents/${activation_path}?ref=${AUTHORIZATION_SHA}" \
             > "$release_directory/activation-window.json"
 
       - name: Verify release identity, authorization, manifest, and all digests

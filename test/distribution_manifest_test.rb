@@ -10,7 +10,7 @@ class DistributionManifestTest < Minitest::Test
   CURRENT_CONFIG = {
     "schema" => "crewcli.homebrew-distribution/v1",
     "releaseId" => "phase2-cli",
-    "sourceRepository" => "zoe-llc/crewcli",
+    "sourceRepository" => "zoe-llc/crewent",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
     "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
@@ -30,6 +30,15 @@ class DistributionManifestTest < Minitest::Test
     assert_equal "@crewent/cli", manifest.package_name
     assert_equal ["crewent", "crewcli"], manifest.commands
     assert_equal ">=22", manifest.node_requirement
+  end
+
+  def test_checked_in_config_separates_source_from_tap_and_bottle_coordinates
+    actual = JSON.parse(File.read(File.expand_path("../config/distribution.json", __dir__)))
+
+    assert_equal CURRENT_CONFIG, actual
+    assert_equal "zoe-llc/crewent", actual.fetch("sourceRepository")
+    assert_equal "zoe-llc/crewcli", actual.fetch("tap")
+    assert_equal "https://ghcr.io/v2/zoe-llc/crewcli", actual.fetch("bottleRoot")
   end
 
   def test_accepts_alternate_distribution_names_without_changing_release_identity
@@ -65,7 +74,7 @@ class DistributionManifestTest < Minitest::Test
       mutate(base, "source") { |value| value.merge("repository" => "other/repo") },
       mutate(base, "source") { |value| value.merge("commit" => "ABC") },
       mutate(base, "artifact") { |value| value.merge("sha256" => "A" * 64) },
-      mutate(base, "artifact") { |value| value.merge("url" => "https://token@github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/crewcli-cli-0.1.0.tgz") },
+      mutate(base, "artifact") { |value| value.merge("url" => "https://token@github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/crewcli-cli-0.1.0.tgz") },
       mutate(base, "artifact") { |value| value.merge("url" => "#{value.fetch("url")}?token=secret") },
       mutate(base, "runtime") do |value|
         value.merge("commands" => { "primary" => "crewcli", "aliases" => ["crewcli"] })

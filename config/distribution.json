@@ -1,7 +1,7 @@
 {
   "schema": "crewcli.homebrew-distribution/v1",
   "releaseId": "phase2-cli",
-  "sourceRepository": "zoe-llc/crewcli",
+  "sourceRepository": "zoe-llc/crewent",
   "formulaName": "crewent",
   "tap": "zoe-llc/crewcli",
   "bottleRoot": "https://ghcr.io/v2/zoe-llc/crewcli"

@@ -10,7 +10,7 @@ class FormulaRendererTest < Minitest::Test
   CURRENT_CONFIG = {
     "schema" => "crewcli.homebrew-distribution/v1",
     "releaseId" => "phase2-cli",
-    "sourceRepository" => "zoe-llc/crewcli",
+    "sourceRepository" => "zoe-llc/crewent",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
     "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
@@ -28,7 +28,7 @@ class FormulaRendererTest < Minitest::Test
 
     assert_equal first, second
     assert_match(/^class Crewent < Formula$/, first)
-    assert_includes first, 'url "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/crewent-cli-0.1.0.tgz"'
+    assert_includes first, 'url "https://github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/crewent-cli-0.1.0.tgz"'
     assert_includes first, 'sha256 "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c"'
     assert_includes first, 'depends_on "node@22"'
     assert_includes first, 'ENV["HOMEBREW_CLI_DISTRIBUTION_BOTTLE_BUILD"] != "1"'

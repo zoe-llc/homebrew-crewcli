@@ -33,7 +33,9 @@ class ImportManifestWorkflowTest < Minitest::Test
   def test_token_is_scoped_to_the_exact_read_only_installation
     source = File.read(WORKFLOW)
 
-    assert_includes source, "repositories: crewcli"
+    assert_includes source, "repositories: crewent"
+    assert_includes source, 'repos/zoe-llc/crewent/releases/tags/${tag}'
+    refute_includes source, 'repos/zoe-llc/crewcli/releases/tags/${tag}'
     assert_includes source, "permission-contents: read"
     assert_includes source, "steps.app-token.outputs.installation-id"
     assert_includes source, "secrets.CLI_DISTRIBUTION_READER_APP_INSTALLATION_ID"

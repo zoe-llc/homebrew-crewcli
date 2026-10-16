@@ -12,7 +12,7 @@ class RenameRehearsalTest < Minitest::Test
   CURRENT_CONFIG = {
     "schema" => "crewcli.homebrew-distribution/v1",
     "releaseId" => "phase2-cli",
-    "sourceRepository" => "zoe-llc/crewcli",
+    "sourceRepository" => "zoe-llc/crewent",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
     "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
@@ -83,12 +83,12 @@ class RenameRehearsalTest < Minitest::Test
       "schema" => "crewcli.distribution-release/v1",
       "releaseId" => "phase2-cli",
       "version" => version,
-      "source" => { "repository" => "zoe-llc/crewcli", "commit" => SOURCE_COMMIT },
+      "source" => { "repository" => "zoe-llc/crewent", "commit" => SOURCE_COMMIT },
       "package" => { "name" => package },
       "artifact" => {
         "type" => "npm-tarball",
         "fileName" => file_name,
-        "url" => "https://github.com/zoe-llc/crewcli/releases/download/cli-v#{version}/#{file_name}",
+        "url" => "https://github.com/zoe-llc/crewent/releases/download/cli-v#{version}/#{file_name}",
         "sha256" => digest
       },
       "runtime" => {

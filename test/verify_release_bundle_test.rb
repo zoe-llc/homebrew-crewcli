@@ -11,7 +11,7 @@ class VerifyReleaseBundleTest < Minitest::Test
   CONFIG = {
     "schema" => "crewcli.homebrew-distribution/v1",
     "releaseId" => "phase2-cli",
-    "sourceRepository" => "zoe-llc/crewcli",
+    "sourceRepository" => "zoe-llc/crewent",
     "formulaName" => "crewent",
     "tap" => "zoe-llc/crewcli",
     "bottleRoot" => "https://ghcr.io/v2/zoe-llc/crewcli"
@@ -181,12 +181,12 @@ class VerifyReleaseBundleTest < Minitest::Test
         "schema" => "crewcli.distribution-release/v1",
         "releaseId" => "phase2-cli",
         "version" => VERSION,
-        "source" => { "repository" => "zoe-llc/crewcli", "commit" => SOURCE_SHA },
+        "source" => { "repository" => "zoe-llc/crewent", "commit" => SOURCE_SHA },
         "package" => { "name" => "@crewent/cli" },
         "artifact" => {
           "type" => "npm-tarball",
           "fileName" => "crewent-cli-0.1.0.tgz",
-          "url" => "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/crewent-cli-0.1.0.tgz",
+          "url" => "https://github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/crewent-cli-0.1.0.tgz",
           "sha256" => artifact_sha
         },
         "runtime" => {
@@ -211,13 +211,13 @@ class VerifyReleaseBundleTest < Minitest::Test
         "releaseId" => "phase2-cli",
         "version" => VERSION,
         "tag" => "cli-v0.1.0",
-        "source" => { "repository" => "zoe-llc/crewcli", "commit" => SOURCE_SHA },
+        "source" => { "repository" => "zoe-llc/crewent", "commit" => SOURCE_SHA },
         "authorization" => {
-          "repository" => "zoe-llc/crewcli",
+          "repository" => "zoe-llc/crewent",
           "commit" => AUTHORIZATION_SHA,
           "mode" => "repository-record"
         },
-        "workflow" => { "repository" => "zoe-llc/crewcli", "runId" => "123", "runAttempt" => 1 },
+        "workflow" => { "repository" => "zoe-llc/crewent", "runId" => "123", "runAttempt" => 1 },
         "expectedReleaseAssets" => [*payloads.keys, "release-evidence.json"],
         "subjects" => payloads.map.with_index do |(name, bytes), index|
           { "role" => roles.fetch(index), "fileName" => name, "sha256" => Digest::SHA256.hexdigest(bytes) }
@@ -230,8 +230,8 @@ class VerifyReleaseBundleTest < Minitest::Test
           "name" => name,
           "state" => "uploaded",
           "digest" => "sha256:#{Digest::SHA256.file(File.join(directory, name)).hexdigest}",
-          "url" => "https://api.github.com/repos/zoe-llc/crewcli/releases/assets/#{100 + index}",
-          "browser_download_url" => "https://github.com/zoe-llc/crewcli/releases/download/cli-v0.1.0/#{name}"
+          "url" => "https://api.github.com/repos/zoe-llc/crewent/releases/assets/#{100 + index}",
+          "browser_download_url" => "https://github.com/zoe-llc/crewent/releases/download/cli-v0.1.0/#{name}"
         }
       end
       release = {
