@@ -23,10 +23,10 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Set up Homebrew without GitHub credentials
+      - name: Set up Homebrew with the read-only repository token
         uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
         with:
-          token: ""
+          token: ${{ github.token }}
           brew-gh-api-token: ""
 
       - name: Check Ruby syntax

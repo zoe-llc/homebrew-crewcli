@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "tmpdir"
 
 class PublicRepositoryPolicyTest < Minitest::Test
   WORKFLOW_DIRECTORY = File.expand_path("../.github/workflows", __dir__)
   EXPECTED_WORKFLOWS = ["validate.yml"].freeze
+  WORKFLOW_GLOB = "*.{yml,yaml}"
 
   def setup
-    @workflows = Dir.glob(File.join(WORKFLOW_DIRECTORY, "*.yml")).sort.to_h do |path|
-      [File.basename(path), File.read(path)]
-    end
+    @workflows = workflow_sources(WORKFLOW_DIRECTORY)
   end
 
   def test_live_repository_is_formula_only_and_secret_free
@@ -17,9 +17,18 @@ class PublicRepositoryPolicyTest < Minitest::Test
   end
 
   def test_rejects_an_additional_pull_request_workflow
-    workflows = @workflows.merge("extra.yml" => workflow.sub("name: Validate Tap", "name: Extra"))
+    workflows = @workflows.merge("extra.yaml" => workflow.sub("name: Validate public Tap", "name: Extra"))
 
     assert_includes policy_errors(workflows), "workflow file set must be exactly validate.yml"
+  end
+
+  def test_discovers_both_yml_and_yaml_workflow_extensions
+    Dir.mktmpdir do |directory|
+      File.write(File.join(directory, "validate.yml"), "name: Validate\n")
+      File.write(File.join(directory, "extra.yaml"), "name: Extra\n")
+
+      assert_equal %w[extra.yaml validate.yml], workflow_sources(directory).keys
+    end
   end
 
   def test_rejects_top_level_write_permission
@@ -92,6 +101,17 @@ class PublicRepositoryPolicyTest < Minitest::Test
     refute_match(/secrets\.|Authorization:/, smoke)
   end
 
+  def test_private_phase_zero_validation_uses_only_the_read_only_repository_token
+    validation = job_sections(workflow).fetch("validate")
+    setup_homebrew = validation.match(
+      /uses: Homebrew\/actions\/setup-homebrew@[^\n]+\n(?<body>.*?)(?=\n\s+- name:)/m
+    )["body"]
+
+    assert_includes setup_homebrew, 'token: ${{ github.token }}'
+    assert_includes setup_homebrew, 'brew-gh-api-token: ""'
+    refute_match(/secrets\./, setup_homebrew)
+  end
+
   def test_remote_actions_are_pinned_and_checkout_credentials_do_not_persist
     @workflows.each do |name, source|
       remote_uses = source.scan(/^\s*-?\s*uses:\s*([^\s#]+)/).flatten.reject do |value|
@@ -110,6 +130,12 @@ class PublicRepositoryPolicyTest < Minitest::Test
 
   def workflow
     @workflows.fetch("validate.yml")
+  end
+
+  def workflow_sources(directory)
+    Dir.glob(File.join(directory, WORKFLOW_GLOB)).sort.to_h do |path|
+      [File.basename(path), File.read(path)]
+    end
   end
 
   def policy_errors(workflows)
