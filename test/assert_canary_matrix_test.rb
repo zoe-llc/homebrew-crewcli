@@ -41,7 +41,14 @@ class AssertCanaryMatrixTest < Minitest::Test
     assert_equal "PASS", result.fetch("status")
     assert_equal "macos-arm64", result.fetch("target")
     assert_equal "macos-15", result.dig("platform", "label")
-    assert_equal true, result.fetch("installation").values.all?
+    assert_equal(
+      {
+        "tapAccess" => "anonymous-public",
+        "ghcrAccess" => "authenticated-private",
+        "bottleOnly" => true
+      },
+      result.fetch("installation")
+    )
     assert_equal true, result.fetch("commands").values.all?
     assert_equal true, result.fetch("lifecycle").values.all?
     assert_equal @expected.fetch("bottles"), result.dig("identity", "bottles")
@@ -87,6 +94,24 @@ class AssertCanaryMatrixTest < Minitest::Test
     source_fallback = lifecycle("linux-x86_64")
     source_fallback["installation"]["bottleOnly"] = false
     assert_target_rejected(source_fallback, target: "linux-x86_64")
+  end
+
+  def test_rejects_legacy_or_inverted_installation_access
+    legacy = lifecycle("linux-x86_64")
+    legacy["installation"] = {
+      "tapAuthenticated" => true,
+      "ghcrAuthenticated" => true,
+      "bottleOnly" => true
+    }
+    assert_target_rejected(legacy, target: "linux-x86_64")
+
+    private_tap = lifecycle("linux-x86_64")
+    private_tap["installation"]["tapAccess"] = "authenticated-private"
+    assert_target_rejected(private_tap, target: "linux-x86_64")
+
+    public_ghcr = lifecycle("linux-x86_64")
+    public_ghcr["installation"]["ghcrAccess"] = "anonymous-public"
+    assert_target_rejected(public_ghcr, target: "linux-x86_64")
   end
 
   def test_aggregates_exactly_three_fresh_targets
@@ -184,8 +209,8 @@ class AssertCanaryMatrixTest < Minitest::Test
         "verified" => true
       },
       "installation" => {
-        "tapAuthenticated" => true,
-        "ghcrAuthenticated" => true,
+        "tapAccess" => "anonymous-public",
+        "ghcrAccess" => "authenticated-private",
         "bottleOnly" => true
       },
       "commands" => {

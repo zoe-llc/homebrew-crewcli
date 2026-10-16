@@ -15,13 +15,16 @@ module CliDistribution
     OCI_REPOSITORY = "ghcr.io/zoe-llc/crewcli/crewent"
     PACKAGE_NAME = "crewcli/crewent"
     TAP_REPOSITORY = "zoe-llc/homebrew-crewcli"
+    ANONYMOUS_PULL_KEYS = %w[
+      schema repository version tagReference digestReference result
+    ].freeze
     SHA256 = /\A[a-f0-9]{64}\z/.freeze
     COMMIT = /\A[a-f0-9]{40}\z/.freeze
     SEMVER = /\A(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\z/.freeze
     IDENTITY = /\A[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\z/.freeze
     SENSITIVE = /secret-sentinel|bearer\s|cookie=|_authtoken|-----BEGIN .*PRIVATE KEY-----/i
 
-    def assert!(package:, graphql:, tags:, manifests:, matrix:, readbacks:, consumer_user:)
+    def assert!(package:, graphql:, tags:, manifests:, matrix:, readbacks:, consumer_user:, anonymous_pull:)
       equal(package.fetch("name"), PACKAGE_NAME, "package.name")
       equal(package.fetch("package_type"), "container", "package.package_type")
       equal(package.fetch("visibility"), "private", "package.visibility")
@@ -46,6 +49,19 @@ module CliDistribution
       fail_at("matrix.version", "must not be a placeholder") if version == "0.0.0"
       source_sha = pattern(matrix.fetch("sourceSha"), COMMIT, "matrix.sourceSha")
       authorization_sha = pattern(matrix.fetch("authorizationSha"), COMMIT, "matrix.authorizationSha")
+      version_manifest = manifests.fetch("tag:#{version}") do
+        fail_at("manifests", "does not contain the exact version tag")
+      end
+      version_digest = pattern(
+        version_manifest.fetch("digest"),
+        /\Asha256:[a-f0-9]{64}\z/,
+        "manifests.#{version}.digest"
+      )
+      validate_anonymous_pull!(
+        anonymous_pull,
+        version: version,
+        digest_reference: "#{OCI_REPOSITORY}@#{version_digest}"
+      )
       evidence = bottles.map.with_index do |entry, index|
         fail_at("matrix.bottles[#{index}]", "must be an object") unless entry.is_a?(Hash)
         target = safe_string(entry.fetch("target"), "matrix.bottles[#{index}].target")
@@ -104,6 +120,7 @@ module CliDistribution
           "visibility" => "private",
           "repository" => TAP_REPOSITORY
         },
+        "anonymousPullRejected" => true,
         "consumer" => {
           "user" => consumer,
           "credential" => "classic-pat-read-packages",
@@ -117,6 +134,27 @@ module CliDistribution
 
     def safe_tag?(value)
       value.is_a?(String) && /\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/.match?(value) && !SENSITIVE.match?(value)
+    end
+
+    def validate_anonymous_pull!(value, version:, digest_reference:)
+      exact_keys(value, ANONYMOUS_PULL_KEYS, "anonymousPull")
+      equal(value.fetch("schema"), "crewcli.ghcr-anonymous-pull/v1", "anonymousPull.schema")
+      equal(value.fetch("repository"), OCI_REPOSITORY, "anonymousPull.repository")
+      equal(value.fetch("version"), version, "anonymousPull.version")
+      equal(
+        value.fetch("tagReference"),
+        "#{OCI_REPOSITORY}:#{version}",
+        "anonymousPull.tagReference"
+      )
+      equal(value.fetch("digestReference"), digest_reference, "anonymousPull.digestReference")
+      equal(value.fetch("result"), "REJECTED", "anonymousPull.result")
+    end
+
+    def exact_keys(value, keys, path)
+      fail_at(path, "must be an object") unless value.is_a?(Hash)
+      missing = keys.reject { |key| value.key?(key) }
+      extra = value.keys.reject { |key| keys.include?(key) }
+      fail_at(path, "contains missing or unknown fields") unless missing.empty? && extra.empty?
     end
 
     def safe_string(value, path)
@@ -184,7 +222,7 @@ module CliDistribution
     def run(argv)
       allowed = %w[
         --package --graphql --tags --manifests --matrix --readbacks
-        --consumer-user --output
+        --consumer-user --anonymous-pull --output
       ]
       fail_at("arguments", "must be option/value pairs") unless argv.length == allowed.length * 2
       values = {}
@@ -220,7 +258,8 @@ module CliDistribution
         manifests: manifests,
         matrix: matrix,
         readbacks: readbacks,
-        consumer_user: values.fetch("--consumer-user")
+        consumer_user: values.fetch("--consumer-user"),
+        anonymous_pull: read_json(values.fetch("--anonymous-pull"), "anonymous pull")
       )
       write_atomic(values.fetch("--output"), result)
       result

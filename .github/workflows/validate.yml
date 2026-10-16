@@ -47,6 +47,7 @@ jobs:
           ruby -Itest test/canary_workflow_test.rb
           ruby -Itest test/promotion_workflow_test.rb
           ruby -Itest test/rename_rehearsal_test.rb
+          ruby -Itest test/public_repository_policy_test.rb
 
       - name: Verify the checked-in Formula is deterministic
         run: |
@@ -72,3 +73,45 @@ jobs:
         run: |
           brew style Formula/crewent.rb
           brew audit --formula --strict zoe-llc/crewcli/crewent
+
+  public-tap-smoke:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.repository.visibility == 'public'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Set up Homebrew without repository credentials
+        uses: Homebrew/actions/setup-homebrew@eb02c69dbabdb66ff183c614f4ce7ab3c077592c
+
+      - name: Verify anonymous exact Tap access
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/zoe-llc/homebrew-crewcli \
+            > "$RUNNER_TEMP/public-tap.json"
+          jq -e '.id == 1414534332 and .full_name == "zoe-llc/homebrew-crewcli" and .visibility == "public" and .default_branch == "main"' \
+            "$RUNNER_TEMP/public-tap.json"
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/zoe-llc/homebrew-crewcli/commits/main \
+            > "$RUNNER_TEMP/public-main.json"
+          observed_sha="$(jq -r .sha "$RUNNER_TEMP/public-main.json")"
+          test "$observed_sha" = "$GITHUB_SHA"
+          curl --fail --silent --show-error \
+            "https://raw.githubusercontent.com/zoe-llc/homebrew-crewcli/${GITHUB_SHA}/Formula/crewent.rb" \
+            > "$RUNNER_TEMP/expected-crewent.rb"
+          expected_formula_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$RUNNER_TEMP/expected-crewent.rb")"
+
+          brew untap zoe-llc/crewcli >/dev/null 2>&1 || true
+          env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN \
+            GIT_TERMINAL_PROMPT=0 brew tap zoe-llc/crewcli
+          tap_root="$(brew --repository)/Library/Taps/zoe-llc/homebrew-crewcli"
+          test "$(git -C "$tap_root" remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewcli"
+          test "$(git -C "$tap_root" rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$tap_root/Formula/crewent.rb")" = "$expected_formula_sha256"
+
+      - name: Remove the anonymous Tap clone
+        if: always()
+        run: brew untap zoe-llc/crewcli >/dev/null 2>&1 || true

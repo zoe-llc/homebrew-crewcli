@@ -2,17 +2,18 @@
 
 ## 状態
 
-workflowとfail-closed evidence contractは実装済みである。実行にはexact source Release、3 bottle、
-4件の共有read credential、実行時間を含むsource authorization recordが必要である。1つでも欠ける間は
+workflowとfail-closed evidence contractは実装済みである。実行にはpublic TapのPhase A / B証拠、
+exact source Release、private GHCRの3 bottle、distribution canary用GHCR read credential 2件、
+実行時間を含むsource authorization recordが必要である。1つでも欠ける間は
 canaryをdispatchせず、stable Formulaを変更しない。
 
-このworkflowはprivate Homebrew配布だけを検証する。Hosted、Product、Change Intent、Context Handoff、
+このworkflowはpublic Tap metadata + private GHCR bottleのHomebrew配布だけを検証する。Hosted、Product、Change Intent、Context Handoff、
 A/B/C、stale no-rebindはsource repositoryの製品canaryが独立して検証する。distribution canaryのPASSを
 製品canaryのPASSとして扱わない。
 
 ## distribution canary
 
-`Verify exact private Homebrew distribution`へ次の4値を一組として渡す。
+`Verify exact public Tap and private GHCR distribution`へ次の4値を一組として渡す。
 
 - exact SemVer
 - source SHA
@@ -32,8 +33,10 @@ consumer targetは次の3件で固定する。
 | `linux-x86_64` | `ubuntu-24.04` | `x86_64_linux` |
 | `linux-arm64` | `ubuntu-24.04-arm` | `arm64_linux` |
 
-各jobは実OS / architectureを`uname`で確認し、read-only credentialでprivate Tapをcloneする。
-candidate FormulaをTapへ配置し、private GHCRから`--force-bottle`でinstallする。primary command、help、
+各jobは実OS / architectureを`uname`で確認し、repository ID `1414534332`、public visibility、default branchを
+Authorization headerなしでread backする。GitHub token環境とcredential helperを無効化してpublic Tapを
+`--no-tags` cloneし、detached exact workflow SHA、remote URL、Formula digestを確認する。candidate Formulaを
+Tapへ配置し、認証済みprivate GHCRから`--force-bottle`でinstallする。primary command、help、
 compatibility alias、uninstall、reinstall、clean rollbackを確認する。source buildやpublic registryへ
 fallbackしない。
 
@@ -41,20 +44,23 @@ fallbackしない。
 `distribution-canary-evidence` artifactを生成する。missing、duplicate、N/A、identity drift、secret様文字列は
 closed schemaが拒否する。
 
-## 共有read secret
+## distribution canary read secret
 
-distribution canaryは次の4 repository secretだけを使う。OS別suffix、runtime token、canary repository
-token、Distribution Reader App tokenは渡さない。
+distribution canaryは次の2 repository secretだけを使う。Tap read credential、OS別suffix、runtime token、
+canary repository token、Distribution Reader App token、bottle read-back credentialは渡さない。
 
 | secret | 用途 | 最小権限 |
 | --- | --- | --- |
-| `CLI_TAP_READ_USER` | private Tap cloneのusername | 値自体は権限を持たない |
-| `CLI_TAP_READ_TOKEN` | private Tap clone | `zoe-llc/homebrew-crewcli` Contents read |
 | `CLI_GHCR_READ_USER` | private GHCR Basic authのusername | 値自体は権限を持たない |
 | `CLI_GHCR_READ_TOKEN` | exact bottle pull | `read:packages` |
 
 credentialはnetwork operationのstepだけへ注入し、URL、Formula、artifact、evidenceへ保存しない。
 CI用credentialを社員端末へ配布しない。
+
+bottle publish後の独立read-backは`GHCR_READ_USER` / `GHCR_READ_PAT`を使う。authenticated ORAS sessionを
+logoutしてcredential entry不在を確認した後、exact version tagとdigestの匿名manifest取得が両方失敗する
+ことを`crewcli.ghcr-anonymous-pull/v1`へ記録する。その後に別consumer credentialで3 bottle blobを読み、
+digestを照合する。anonymous pullが一件でも成功した場合はGate #5をFAILにして後続canaryを開始しない。
 
 ## Windows / WSL2
 
@@ -83,7 +89,7 @@ npm publish / dist-tag、source Release、tag、GHCR blobは変更しない。
 ## 失敗時
 
 - preflight失敗: run identity、candidate digest、artifact retentionを確認し、別runのartifactで代替しない。
-- consumer失敗: targetのTap / GHCR credentialと実platformを確認し、public/source fallbackへ切り替えない。
+- consumer失敗: Tapのpublic visibility / anonymous access、private GHCR credential、実platformを別々に確認し、credential付きTap clone、public registry、source fallbackへ切り替えない。
 - matrix失敗: missing target、freshness、identity driftを修正し、新しいrun IDで全3件を再実行する。
 - promotion失敗: PR作成前なら再承認後に新runを使う。PR作成後ならそのPRをcloseし、新しいrunから作り直す。
 

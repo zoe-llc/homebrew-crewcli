@@ -29,11 +29,11 @@ module CliDistribution
       distribution-config-release-workflow
       release-authorization-boundary
       manifest-reader-app
-      private-tap-access
+      public-tap-anonymous-access
       private-ghcr-access
       license-sbom-redistribution
       bottle-build-runners
-      wsl2-consumer-runner
+      three-target-distribution-activation
       dedicated-canary-target
       retention-rollback-activation-window
     ].freeze

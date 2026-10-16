@@ -36,7 +36,7 @@ module CliDistribution
       schema target status timestamp identity producer workflow platform installation commands lifecycle
     ].freeze
     PLATFORM_KEYS = %w[os architecture host verified].freeze
-    INSTALLATION_KEYS = %w[tapAuthenticated ghcrAuthenticated bottleOnly].freeze
+    INSTALLATION_KEYS = %w[tapAccess ghcrAccess bottleOnly].freeze
     COMMAND_KEYS = %w[primaryVersionMatched primaryHelpMatched aliasVersionMatched].freeze
     LIFECYCLE_KEYS = %w[uninstallPassed reinstallPassed cleanRollbackPassed].freeze
     RUN_KEYS = %w[repository workflowPath event branch runId runAttempt headSha].freeze
@@ -134,7 +134,7 @@ module CliDistribution
       expected_platform = TARGETS.fetch(target).reject { |key, _value| key == "label" }.merge("verified" => true)
       exact_keys(value.fetch("platform"), PLATFORM_KEYS, "lifecycle.platform")
       equal(value.fetch("platform"), expected_platform, "lifecycle.platform")
-      assert_true_object(value.fetch("installation"), INSTALLATION_KEYS, "lifecycle.installation")
+      assert_installation(value.fetch("installation"), "lifecycle.installation")
       assert_true_object(value.fetch("commands"), COMMAND_KEYS, "lifecycle.commands")
       assert_true_object(value.fetch("lifecycle"), LIFECYCLE_KEYS, "lifecycle.lifecycle")
       reject_sensitive!(value, "lifecycle")
@@ -155,7 +155,7 @@ module CliDistribution
       equal(value.fetch("producer"), expected_producer(expected), "#{path}.producer")
       equal(value.fetch("workflow"), expected_workflow(expected), "#{path}.workflow")
       equal(value.fetch("platform"), contract.merge("verified" => true), "#{path}.platform")
-      assert_true_object(value.fetch("installation"), INSTALLATION_KEYS, "#{path}.installation")
+      assert_installation(value.fetch("installation"), "#{path}.installation")
       assert_true_object(value.fetch("commands"), COMMAND_KEYS, "#{path}.commands")
       assert_true_object(value.fetch("lifecycle"), LIFECYCLE_KEYS, "#{path}.lifecycle")
       reject_sensitive!(value, path)
@@ -193,6 +193,13 @@ module CliDistribution
     def assert_true_object(value, keys, path)
       exact_keys(value, keys, path)
       keys.each { |key| equal(value.fetch(key), true, "#{path}.#{key}") }
+    end
+
+    def assert_installation(value, path)
+      exact_keys(value, INSTALLATION_KEYS, path)
+      equal(value.fetch("tapAccess"), "anonymous-public", "#{path}.tapAccess")
+      equal(value.fetch("ghcrAccess"), "authenticated-private", "#{path}.ghcrAccess")
+      equal(value.fetch("bottleOnly"), true, "#{path}.bottleOnly")
     end
 
     def canonical_time(value)

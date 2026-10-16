@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require "fileutils"
 require "json"
 require "minitest/autorun"
 require "tmpdir"
@@ -21,6 +22,7 @@ class AssertGhcrReadbackTest < Minitest::Test
       assert_equal "2" * 40, result.fetch("authorizationSha")
       assert_equal "private", result.dig("package", "visibility")
       assert_equal "zoe-llc/homebrew-crewcli", result.dig("package", "repository")
+      assert_equal true, result.fetch("anonymousPullRejected")
       assert_equal true, result.dig("consumer", "readVerified")
       assert_equal 3, result.fetch("bottles").length
       result.fetch("bottles").each do |bottle|
@@ -57,6 +59,89 @@ class AssertGhcrReadbackTest < Minitest::Test
       File.binwrite(inputs.fetch(:readbacks).fetch(inputs.fetch(:readbacks).keys.first), "tampered")
       assert_raises(CliDistribution::GhcrReadbackError) do
         CliDistribution::GhcrReadback.assert!(**inputs, consumer_user: "employee-reader")
+      end
+    end
+  end
+
+  def test_rejects_false_missing_or_unknown_anonymous_pull_evidence
+    with_inputs do |inputs|
+      inputs.fetch(:anonymous_pull)["result"] = false
+      assert_raises(CliDistribution::GhcrReadbackError) do
+        CliDistribution::GhcrReadback.assert!(**inputs, consumer_user: "employee-reader")
+      end
+    end
+
+    with_inputs do |inputs|
+      inputs.fetch(:anonymous_pull).delete("result")
+      assert_raises(CliDistribution::GhcrReadbackError) do
+        CliDistribution::GhcrReadback.assert!(**inputs, consumer_user: "employee-reader")
+      end
+    end
+
+    with_inputs do |inputs|
+      inputs.fetch(:anonymous_pull)["result"] = "ALLOWED"
+      assert_raises(CliDistribution::GhcrReadbackError) do
+        CliDistribution::GhcrReadback.assert!(**inputs, consumer_user: "employee-reader")
+      end
+    end
+
+    with_inputs do |inputs|
+      inputs.fetch(:anonymous_pull)["unexpected"] = true
+      assert_raises(CliDistribution::GhcrReadbackError) do
+        CliDistribution::GhcrReadback.assert!(**inputs, consumer_user: "employee-reader")
+      end
+    end
+  end
+
+  def test_cli_requires_and_consumes_the_anonymous_pull_record
+    with_inputs do |inputs, directory|
+      package_path = write_json(directory, "package.json", inputs.fetch(:package))
+      graphql_path = write_json(directory, "graphql.json", inputs.fetch(:graphql))
+      tags_path = write_json(directory, "tags.json", inputs.fetch(:tags))
+      matrix_path = write_json(directory, "matrix.json", inputs.fetch(:matrix))
+      anonymous_path = write_json(directory, "anonymous.json", inputs.fetch(:anonymous_pull))
+      manifests_directory = File.join(directory, "manifests")
+      readbacks_directory = File.join(directory, "readbacks")
+      FileUtils.mkdir_p(manifests_directory)
+      FileUtils.mkdir_p(readbacks_directory)
+      inputs.fetch(:manifests).each do |key, value|
+        name = if key.start_with?("tag:")
+                 "tag-#{key.delete_prefix("tag:")}.json"
+               else
+                 "#{key.delete_prefix("sha256:")}.json"
+               end
+        write_json(manifests_directory, name, value)
+      end
+      inputs.fetch(:readbacks).each do |digest, path|
+        FileUtils.cp(path, File.join(readbacks_directory, "#{digest}.tar.gz"))
+      end
+      output_path = File.join(directory, "output.json")
+
+      result = CliDistribution::GhcrReadback.run([
+        "--package", package_path,
+        "--graphql", graphql_path,
+        "--tags", tags_path,
+        "--manifests", manifests_directory,
+        "--matrix", matrix_path,
+        "--readbacks", readbacks_directory,
+        "--consumer-user", "employee-reader",
+        "--anonymous-pull", anonymous_path,
+        "--output", output_path
+      ])
+
+      assert_equal true, result.fetch("anonymousPullRejected")
+      assert_equal true, JSON.parse(File.read(output_path)).fetch("anonymousPullRejected")
+      assert_raises(CliDistribution::GhcrReadbackError) do
+        CliDistribution::GhcrReadback.run([
+          "--package", package_path,
+          "--graphql", graphql_path,
+          "--tags", tags_path,
+          "--manifests", manifests_directory,
+          "--matrix", matrix_path,
+          "--readbacks", readbacks_directory,
+          "--consumer-user", "employee-reader",
+          "--output", File.join(directory, "missing-anonymous.json")
+        ])
       end
     end
   end
@@ -114,7 +199,7 @@ class AssertGhcrReadbackTest < Minitest::Test
           }
         }
       )
-      yield(
+      inputs = {
         package: {
           "name" => PACKAGE_NAME,
           "package_type" => "container",
@@ -137,8 +222,23 @@ class AssertGhcrReadbackTest < Minitest::Test
         tags: { "tags" => ["0.1.0"] },
         manifests: manifests,
         matrix: matrix,
-        readbacks: bottles.to_h { |entry, path| [entry.dig("bottle", "sha256"), path] }
-      )
+        readbacks: bottles.to_h { |entry, path| [entry.dig("bottle", "sha256"), path] },
+        anonymous_pull: {
+          "schema" => "crewcli.ghcr-anonymous-pull/v1",
+          "repository" => REPOSITORY,
+          "version" => "0.1.0",
+          "tagReference" => "#{REPOSITORY}:0.1.0",
+          "digestReference" => "#{REPOSITORY}@sha256:#{index_digest}",
+          "result" => "REJECTED"
+        }
+      }
+      yield(inputs, directory)
     end
+  end
+
+  def write_json(directory, name, value)
+    path = File.join(directory, name)
+    File.write(path, "#{JSON.generate(value)}\n")
+    path
   end
 end

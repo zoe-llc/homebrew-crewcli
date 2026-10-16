@@ -1,4 +1,4 @@
-name: Verify exact private Homebrew distribution
+name: Verify exact public Tap and private GHCR distribution
 
 on:
   workflow_dispatch:
@@ -150,6 +150,7 @@ jobs:
 
   canary:
     needs: preflight
+    if: github.ref == 'refs/heads/main'
     strategy:
       fail-fast: true
       matrix:
@@ -220,28 +221,26 @@ jobs:
         with:
           token: ${{ github.token }}
 
-      - name: Clone the private Tap with the shared read credential
-        env:
-          TAP_READ_USER: ${{ secrets.CLI_TAP_READ_USER }}
-          TAP_READ_TOKEN: ${{ secrets.CLI_TAP_READ_TOKEN }}
+      - name: Clone the public Tap anonymously
         run: |
           set -euo pipefail
-          test -n "$TAP_READ_USER"
-          test -n "$TAP_READ_TOKEN"
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/zoe-llc/homebrew-crewcli \
+            > "$RUNNER_TEMP/public-tap.json"
+          jq -e '.id == 1414534332 and .full_name == "zoe-llc/homebrew-crewcli" and .visibility == "public" and .default_branch == "main"' \
+            "$RUNNER_TEMP/public-tap.json"
           brew untap zoe-llc/crewcli >/dev/null 2>&1 || true
           tap_root="$(brew --repository)/Library/Taps/zoe-llc/homebrew-crewcli"
           mkdir -p "$(dirname "$tap_root")"
-          header="$(printf '%s:%s' "$TAP_READ_USER" "$TAP_READ_TOKEN" | base64 | tr -d '\r\n')"
-          GIT_CONFIG_COUNT=1 \
-            GIT_CONFIG_KEY_0=http.extraheader \
-            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $header" \
-            GIT_TERMINAL_PROMPT=0 \
-            git clone --no-tags https://github.com/zoe-llc/homebrew-crewcli.git "$tap_root"
+          env -u GH_TOKEN -u GITHUB_TOKEN GIT_TERMINAL_PROMPT=0 \
+            git clone --no-tags -c credential.helper= https://github.com/zoe-llc/homebrew-crewcli.git "$tap_root"
           git -C "$tap_root" checkout --detach "$GITHUB_SHA"
           test "$(git -C "$tap_root" remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewcli.git"
+          test "$(git -C "$tap_root" rev-parse HEAD)" = "$GITHUB_SHA"
           cp "$RUNNER_TEMP/canary-inputs/Formula/crewent.rb" "$tap_root/Formula/crewent.rb"
           test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$tap_root/Formula/crewent.rb")" = "$(jq -r .formulaSha256 "$RUNNER_TEMP/canary-inputs/expected.json")"
-          unset TAP_READ_TOKEN header
 
       - name: Verify the exact private bottle lifecycle
         env:
@@ -274,13 +273,13 @@ jobs:
             echo "crewent remained installed after clean rollback" >&2
             exit 1
           fi
-          unset HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN GHCR_READ_TOKEN registry_auth
+          unset HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN GHCR_READ_USER GHCR_READ_TOKEN registry_auth
 
           mkdir -p "$RUNNER_TEMP/canary-evidence"
           jq -n \
             --arg target "$TARGET" \
             --argjson platform "$(cat "$RUNNER_TEMP/platform-attestation.json")" \
-            '{schema:"crewcli.homebrew-distribution-canary-lifecycle/v1",target:$target,platform:$platform,installation:{tapAuthenticated:true,ghcrAuthenticated:true,bottleOnly:true},commands:{primaryVersionMatched:true,primaryHelpMatched:true,aliasVersionMatched:true},lifecycle:{uninstallPassed:true,reinstallPassed:true,cleanRollbackPassed:true}}' \
+            '{schema:"crewcli.homebrew-distribution-canary-lifecycle/v1",target:$target,platform:$platform,installation:{tapAccess:"anonymous-public",ghcrAccess:"authenticated-private",bottleOnly:true},commands:{primaryVersionMatched:true,primaryHelpMatched:true,aliasVersionMatched:true},lifecycle:{uninstallPassed:true,reinstallPassed:true,cleanRollbackPassed:true}}' \
             > "$RUNNER_TEMP/canary-evidence/lifecycle.json"
 
       - name: Close the distribution target evidence
@@ -314,7 +313,7 @@ jobs:
 
   aggregate:
     needs: canary
-    if: always() && needs.canary.result == 'success'
+    if: github.ref == 'refs/heads/main' && always() && needs.canary.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

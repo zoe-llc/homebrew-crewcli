@@ -47,17 +47,17 @@ class CanaryWorkflowTest < Minitest::Test
     assert_match(/^\s+canary:\n\s+needs: preflight/, @source)
   end
 
-  def test_uses_only_four_shared_read_credentials
+  def test_uses_only_two_private_ghcr_read_credentials
     secrets = @source.scan(/\$\{\{\s*secrets\.([A-Z0-9_]+)\s*\}\}/).flatten.uniq.sort
-    assert_equal %w[
-      CLI_GHCR_READ_TOKEN CLI_GHCR_READ_USER CLI_TAP_READ_TOKEN CLI_TAP_READ_USER
-    ], secrets
+    assert_equal %w[CLI_GHCR_READ_TOKEN CLI_GHCR_READ_USER], secrets
     refute_includes @source, "secrets["
     refute_includes @source, "CLI_DISTRIBUTION_READER_APP"
     refute_includes @source, "CLI_RUNTIME_TOKEN"
     refute_includes @source, "CLI_CANARY_READ"
+    refute_match(/CLI_TAP_READ|TAP_READ_/, @source)
     refute_match(%r{https://[^\s$]+:[^\s$]+@github\.com}, @source)
-    assert_includes @source, "GIT_CONFIG_VALUE_0"
+    refute_includes @source, "http.extraheader"
+    refute_match(/GIT_CONFIG_(?:COUNT|KEY|VALUE)/, @source)
     assert_includes @source, "HOMEBREW_DOCKER_REGISTRY_BASIC_AUTH_TOKEN"
   end
 
@@ -71,8 +71,16 @@ class CanaryWorkflowTest < Minitest::Test
     refute_includes @source, "microsoft-standard-WSL2"
   end
 
-  def test_clones_private_tap_and_checks_bottle_only_lifecycle
-    assert_includes @source, "git clone --no-tags https://github.com/zoe-llc/homebrew-crewcli.git"
+  def test_clones_public_tap_anonymously_and_checks_bottle_only_lifecycle
+    assert_includes @source, "https://api.github.com/repos/zoe-llc/homebrew-crewcli"
+    assert_includes @source, ".id == 1414534332"
+    assert_includes @source, '.visibility == "public"'
+    assert_includes @source, '.default_branch == "main"'
+    assert_includes @source, "env -u GH_TOKEN -u GITHUB_TOKEN"
+    assert_includes @source, "GIT_TERMINAL_PROMPT=0"
+    assert_includes @source, "git clone --no-tags -c credential.helper= https://github.com/zoe-llc/homebrew-crewcli.git"
+    assert_includes @source, 'remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewcli.git"'
+    assert_includes @source, 'rev-parse HEAD)" = "$GITHUB_SHA"'
     assert_includes @source, "cp \"$RUNNER_TEMP/canary-inputs/Formula/crewent.rb\""
     assert_operator @source.scan("brew install --force-bottle zoe-llc/crewcli/crewent").length, :>=, 2
     assert_includes @source, "crewent\" --version"
@@ -81,6 +89,10 @@ class CanaryWorkflowTest < Minitest::Test
     assert_operator @source.scan("brew uninstall crewent").length, :>=, 2
     assert_includes @source, "cleanRollbackPassed:true"
     assert_includes @source, "crewcli.homebrew-distribution-canary-lifecycle/v1"
+    assert_includes @source, 'tapAccess:"anonymous-public"'
+    assert_includes @source, 'ghcrAccess:"authenticated-private"'
+    refute_includes @source, "tapAuthenticated"
+    refute_includes @source, "ghcrAuthenticated"
   end
 
   def test_emits_distribution_evidence_without_product_or_source_harness

@@ -14,11 +14,11 @@ class VerifyActivationWindowTest < Minitest::Test
     distribution-config-release-workflow
     release-authorization-boundary
     manifest-reader-app
-    private-tap-access
+    public-tap-anonymous-access
     private-ghcr-access
     license-sbom-redistribution
     bottle-build-runners
-    wsl2-consumer-runner
+    three-target-distribution-activation
     dedicated-canary-target
     retention-rollback-activation-window
   ].freeze
@@ -66,6 +66,25 @@ class VerifyActivationWindowTest < Minitest::Test
       assert_raises(CliDistribution::ActivationWindowError) do
         CliDistribution::ActivationWindow.verify!(
           value,
+          expected: expected,
+          ancestry: ancestry,
+          now: Time.iso8601("2026-10-12T12:00:00Z")
+        )
+      end
+    end
+  end
+
+  def test_rejects_superseded_gate_identities
+    {
+      3 => "private-tap-access",
+      7 => "wsl2-consumer-runner"
+    }.each do |index, superseded_id|
+      gates = deep_copy(evidence.fetch("gates"))
+      gates[index]["id"] = superseded_id
+
+      assert_raises(CliDistribution::ActivationWindowError) do
+        CliDistribution::ActivationWindow.verify!(
+          evidence.merge("gates" => gates),
           expected: expected,
           ancestry: ancestry,
           now: Time.iso8601("2026-10-12T12:00:00Z")
@@ -151,6 +170,9 @@ class VerifyActivationWindowTest < Minitest::Test
     }
   end
 
+  def deep_copy(value)
+    Marshal.load(Marshal.dump(value))
+  end
 
   def ancestry
     {

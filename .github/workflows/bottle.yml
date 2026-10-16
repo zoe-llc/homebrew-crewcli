@@ -173,6 +173,7 @@ jobs:
 
   build:
     needs: preflight
+    if: github.ref == 'refs/heads/main'
     strategy:
       fail-fast: true
       matrix:
@@ -306,6 +307,7 @@ jobs:
 
   publish:
     needs: [preflight, build]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -450,18 +452,19 @@ jobs:
           set -euo pipefail
           brew pr-upload --upload-only --no-commit --debug --root-url="$BOTTLE_ROOT"
 
-      - name: Prove private package linkage and read back with a separate consumer
+      - name: Collect authenticated private package manifests
         env:
           GH_TOKEN: ${{ github.token }}
           GHCR_WRITE_USER: ${{ github.actor }}
           GHCR_WRITE_TOKEN: ${{ github.token }}
-          GHCR_READ_USER: ${{ secrets.GHCR_READ_USER }}
-          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           package_name="crewcli/crewent"
           oci_repository="ghcr.io/zoe-llc/crewcli/crewent"
           readback_root="$RUNNER_TEMP/ghcr-readback"
+          export DOCKER_CONFIG="$RUNNER_TEMP/oras-auth"
+          mkdir -p "$DOCKER_CONFIG"
           mkdir -p "$readback_root/manifests" "$readback_root/consumer"
           gh api "orgs/zoe-llc/packages/container/crewcli%2Fcrewent" > "$readback_root/package.json"
           gh api graphql \
@@ -473,6 +476,7 @@ jobs:
           printf '%s' "$GHCR_WRITE_TOKEN" | oras login ghcr.io --username "$GHCR_WRITE_USER" --password-stdin
           oras repo tags "$oci_repository" --format json > "$readback_root/tags.json"
           jq -e '.tags | length > 0 and all(test("^[A-Za-z0-9][A-Za-z0-9_.-]*$"))' "$readback_root/tags.json"
+          jq -e --arg version "$VERSION" '.tags | index($version) != null' "$readback_root/tags.json"
           : > "$readback_root/child-digests.txt"
           jq -r '.tags[]' "$readback_root/tags.json" | while read -r tag; do
             index_file="$readback_root/manifests/tag-$tag.json"
@@ -484,7 +488,51 @@ jobs:
             oras manifest fetch "$oci_repository@$digest" --format json > "$readback_root/manifests/${digest#sha256:}.json"
           done
           oras logout ghcr.io
+          unset GHCR_WRITE_USER GHCR_WRITE_TOKEN
+          if test -f "$DOCKER_CONFIG/config.json"; then
+            jq -e '[(.auths // {}) | keys[] | select(test("ghcr\\.io"))] | length == 0' "$DOCKER_CONFIG/config.json"
+          fi
 
+      - name: Reject anonymous exact GHCR manifest reads
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          oci_repository="ghcr.io/zoe-llc/crewcli/crewent"
+          readback_root="$RUNNER_TEMP/ghcr-readback"
+          export DOCKER_CONFIG="$RUNNER_TEMP/oras-auth"
+          if test -f "$DOCKER_CONFIG/config.json"; then
+            jq -e '[(.auths // {}) | keys[] | select(test("ghcr\\.io"))] | length == 0' "$DOCKER_CONFIG/config.json"
+          fi
+          tag_reference="$oci_repository:$VERSION"
+          version_digest="$(jq -r '.digest' "$readback_root/manifests/tag-$VERSION.json")"
+          [[ "$version_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          digest_reference="$oci_repository@$version_digest"
+          if oras manifest fetch "$tag_reference" --format json > /dev/null 2>&1; then
+            echo "anonymous exact GHCR manifest read succeeded for version tag" >&2
+            exit 1
+          fi
+          if oras manifest fetch "$digest_reference" --format json > /dev/null 2>&1; then
+            echo "anonymous exact GHCR manifest read succeeded for digest" >&2
+            exit 1
+          fi
+          jq -n \
+            --arg repository "$oci_repository" \
+            --arg version "$VERSION" \
+            --arg tagReference "$tag_reference" \
+            --arg digestReference "$digest_reference" \
+            '{schema:"crewcli.ghcr-anonymous-pull/v1",repository:$repository,version:$version,tagReference:$tagReference,digestReference:$digestReference,result:"REJECTED"}' \
+            > "$readback_root/anonymous-pull.json"
+
+      - name: Read back exact bottle blobs with a separate consumer
+        env:
+          GHCR_READ_USER: ${{ secrets.GHCR_READ_USER }}
+          GHCR_READ_PAT: ${{ secrets.GHCR_READ_PAT }}
+        run: |
+          set -euo pipefail
+          oci_repository="ghcr.io/zoe-llc/crewcli/crewent"
+          readback_root="$RUNNER_TEMP/ghcr-readback"
+          export DOCKER_CONFIG="$RUNNER_TEMP/oras-auth"
           printf '%s' "$GHCR_READ_PAT" | oras login ghcr.io --username "$GHCR_READ_USER" --password-stdin
           jq -r '.bottles[].bottle.sha256' "$RUNNER_TEMP/bottles/bottle-matrix.json" | while read -r digest; do
             destination="$readback_root/consumer/${digest}.tar.gz"
@@ -499,7 +547,9 @@ jobs:
             --matrix "$RUNNER_TEMP/bottles/bottle-matrix.json" \
             --readbacks "$readback_root/consumer" \
             --consumer-user "$GHCR_READ_USER" \
+            --anonymous-pull "$readback_root/anonymous-pull.json" \
             --output "$RUNNER_TEMP/bottle-candidate/metadata/ghcr-readback.json"
+          unset GHCR_READ_USER GHCR_READ_PAT
 
       - name: Upload bottle candidate for exact review and canary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

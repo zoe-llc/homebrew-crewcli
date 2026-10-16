@@ -110,7 +110,24 @@ class BottleWorkflowTest < Minitest::Test
     assert_includes source, "oras repo tags"
     assert_includes source, "oras manifest fetch"
     assert_includes source, "oras logout ghcr.io"
+    assert_includes source, "crewcli.ghcr-anonymous-pull/v1"
+    assert_includes source, 'result:"REJECTED"'
+    assert_includes source, "if oras manifest fetch"
+    assert_includes source, "anonymous exact GHCR manifest read succeeded"
     assert_includes source, "scripts/assert_ghcr_readback.rb"
+    assert_includes source, "--anonymous-pull"
     assert_includes source, "ghcr-readback.json"
+
+    authenticated_logout = source.index("oras logout ghcr.io")
+    anonymous_probe = source.index("if oras manifest fetch")
+    validator = source.index("ruby scripts/assert_ghcr_readback.rb")
+    assert authenticated_logout && anonymous_probe && validator
+    assert_operator authenticated_logout, :<, anonymous_probe
+    assert_operator anonymous_probe, :<, validator
+
+    anonymous_step = source.match(
+      /- name: Reject anonymous exact GHCR manifest reads\n(?<body>.*?)(?=\n\s+- name:)/m
+    )["body"]
+    refute_match(/secrets\.|GHCR_(?:READ|WRITE)|github\.token/, anonymous_step)
   end
 end
