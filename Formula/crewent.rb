@@ -17,8 +17,8 @@ class Crewent < Formula
       odie "Prebuilt bottle required; consumer source fallback is disabled"
     end
 
-    package_root = buildpath/"package"
-    odie "npm package root is missing" unless package_root.directory?
+    package_root = buildpath
+    odie "npm package metadata is missing" unless (package_root/"package.json").file?
     libexec.install package_root.children
 
     metadata = JSON.parse((libexec/"package.json").read)
