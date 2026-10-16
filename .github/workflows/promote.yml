@@ -245,7 +245,7 @@ jobs:
           app-id: ${{ secrets.CLI_DISTRIBUTION_READER_APP_ID }}
           private-key: ${{ secrets.CLI_DISTRIBUTION_READER_APP_PRIVATE_KEY }}
           owner: zoe-llc
-          repositories: crewcli
+          repositories: crewent
           permission-contents: read
 
       - name: Revalidate source authorization immediately before the only content write
@@ -261,8 +261,8 @@ jobs:
           test "${{ steps.app-token.outputs.installation-id }}" = "$EXPECTED_APP_INSTALLATION_ID"
           root="$RUNNER_TEMP/promotion-authorization"
           mkdir -p "$root"
-          gh api "repos/zoe-llc/crewcli/compare/${AUTHORIZATION_SHA}...develop" > "$root/authorization-develop.json"
-          gh api "repos/zoe-llc/crewcli/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$root/source-authorization.json"
+          gh api "repos/zoe-llc/crewent/compare/${AUTHORIZATION_SHA}...develop" > "$root/authorization-develop.json"
+          gh api "repos/zoe-llc/crewent/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}" > "$root/source-authorization.json"
           jq -n \
             --arg authorizationSha "$AUTHORIZATION_SHA" \
             --arg authorizationMergeBase "$(jq -r '.merge_base_commit.sha' "$root/authorization-develop.json")" \
@@ -274,7 +274,7 @@ jobs:
             > "$root/ancestry.json"
           activation_path="docs/verification/cli-internal-activation-window-${VERSION}.json"
           gh api -H "Accept: application/vnd.github.raw+json" \
-            "repos/zoe-llc/crewcli/contents/${activation_path}?ref=${AUTHORIZATION_SHA}" \
+            "repos/zoe-llc/crewent/contents/${activation_path}?ref=${AUTHORIZATION_SHA}" \
             > "$root/activation-window.json"
           ruby scripts/verify_activation_window.rb \
             --evidence "$root/activation-window.json" \

@@ -9,7 +9,7 @@
 
 本書と`test/rename_rehearsal_test.rb`は一時fixtureだけを使う。**実名称変更、repository rename、GHCR
 publish、Formula promotionは行わない。** 実行にはsource側の
-[CLI配布名称変更runbook](https://github.com/zoe-llc/crewcli/blob/develop/docs/operations/cli-distribution-rename.md)
+[CLI配布名称変更runbook](https://github.com/zoe-llc/crewent/blob/develop/docs/operations/cli-distribution-rename.md)
 に定める別の明示承認windowが必要である。
 
 ## 不変条件

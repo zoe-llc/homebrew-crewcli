@@ -130,7 +130,7 @@ class VerifyActivationWindowTest < Minitest::Test
         {
           "id" => id,
           "result" => "PASS",
-          "evidenceUrl" => "https://github.com/zoe-llc/crewcli/blob/#{EVIDENCE_SHA}/docs/verification/gate.md"
+          "evidenceUrl" => "https://github.com/zoe-llc/crewent/blob/#{EVIDENCE_SHA}/docs/verification/gate.md"
         }
       end,
       "activationWindow" => {

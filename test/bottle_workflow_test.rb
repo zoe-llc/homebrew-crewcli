@@ -25,7 +25,12 @@ class BottleWorkflowTest < Minitest::Test
     source = File.read(WORKFLOW)
 
     assert_includes source, "actions/create-github-app-token@"
-    assert_includes source, "repositories: crewcli"
+    assert_includes source, "repositories: crewent"
+    assert_includes source, "repos/zoe-llc/crewent/releases/tags/cli-v${VERSION}"
+    assert_includes source, "repos/zoe-llc/crewent/git/ref/tags/cli-v${VERSION}"
+    assert_includes source, "repos/zoe-llc/crewent/compare/${AUTHORIZATION_SHA}...develop"
+    assert_includes source, "repos/zoe-llc/crewent/compare/${SOURCE_SHA}...${AUTHORIZATION_SHA}"
+    refute_includes source, "repos/zoe-llc/crewcli/"
     assert_includes source, "permission-contents: read"
     assert_includes source, "crewent-distribution-reader"
     assert_includes source, "scripts/verify_release_bundle.rb"
@@ -42,6 +47,8 @@ class BottleWorkflowTest < Minitest::Test
     assert_includes source, "distribution-release.json"
     assert_includes source, "authorizationSha"
     assert_includes source, "scripts/import_release.rb render"
+    assert_includes source, "brew install --build-bottle zoe-llc/crewcli/crewent"
+    assert_includes source, "https://ghcr.io/v2/zoe-llc/crewcli"
   end
 
   def test_builds_and_tests_exact_bottles_without_registry_or_source_fallback

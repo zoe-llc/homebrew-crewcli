@@ -148,7 +148,7 @@ module CliDistribution
       uri = URI.parse(value)
       segments = uri.path.split("/").reject(&:empty?)
       unless uri.scheme == "https" && uri.host == "github.com" && uri.userinfo.nil? &&
-             uri.query.nil? && uri.fragment.nil? && segments[0, 3] == %w[zoe-llc crewcli blob] &&
+             uri.query.nil? && uri.fragment.nil? && segments[0, 3] == %w[zoe-llc crewent blob] &&
              COMMIT.match?(segments.fetch(3, "")) && segments[4, 2] == %w[docs verification] &&
              segments.length >= 7
         fail_at(path, "must be an exact source verification URL")
