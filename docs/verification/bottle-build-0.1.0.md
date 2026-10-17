@@ -4,19 +4,19 @@
 
 `BLOCKED — live build not executed`
 
-2026-10-17 時点で source `cli-v0.1.0` Release、private GHCR package、3 target bottleは存在せず、この文書はlive成功証拠ではありません。build / publish contractの正本は private `zoe-llc/crewcli-distribution` へ移動しました。
+2026-10-17 時点で source `cli-v0.1.0` Release、private GHCR package、3 target bottleは存在せず、この文書はlive成功証拠ではありません。build / publish contractの正本は private `zoe-llc/crewent-distribution` へ移動しました。
 
 ## Fixed identity
 
 | Field | Required value |
 | --- | --- |
 | Source repository | `zoe-llc/crewent` |
-| Automation repository | `zoe-llc/crewcli-distribution` |
-| Tap repository | `zoe-llc/homebrew-crewcli` |
+| Automation repository | `zoe-llc/crewent-distribution` |
+| Tap repository | `zoe-llc/homebrew-crewent` |
 | Release identity | `phase2-cli` |
 | Version | `0.1.0` |
 | Formula | `crewent` |
-| GHCR root | `https://ghcr.io/v2/zoe-llc/crewcli` |
+| GHCR root | `https://ghcr.io/v2/zoe-llc/crewent` |
 | Targets | `macos-arm64`, `linux-x86_64`, `linux-arm64` |
 
 ## PASSに必要なread-back

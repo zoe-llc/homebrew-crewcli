@@ -23,7 +23,7 @@ class Crewent < Formula
 
     metadata = JSON.parse((libexec/"package.json").read)
     bin_map = metadata.fetch("bin")
-    expected_commands = ["crewent", "crewcli"]
+    expected_commands = ["crewent"]
     if bin_map.keys.sort != expected_commands.sort
       odie "package command set does not match the release manifest"
     end
