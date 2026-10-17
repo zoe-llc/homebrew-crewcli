@@ -1,12 +1,12 @@
-# homebrew-crewcli
+# homebrew-crewent
 
-Crewent CLI の Formula-only Homebrew Tap です。公開後は Formula、rename mapping、公開可能な検証 metadata を匿名で配布し、bottle payload は private GHCR に保持します。Tap の公開は Crewent source、Release asset、CLI 自体の一般公開、OSS 化、公開ライセンス付与を意味しません。
+Crewent CLI の Formula-only Homebrew Tap です。Formula と credential-free な検証 metadata を匿名で配布し、bottle payload は private GHCR に保持します。Tap の公開は Crewent source、Release asset、CLI 自体の一般公開、OSS 化、公開ライセンス付与を意味しません。
 
 ## 現在の状態
 
-2026-10-17 時点では Phase 0 の準備中で、repository visibility は private のままです。Release、tag、GHCR package、実 canary、stable Formula promotion は実施していません。
+2026-10-17 時点では repository ID `1414534332` を維持した public Formula-only Tap として準備済みです。Release、tag、GHCR package、実 canary、stable Formula promotion は実施していません。
 
-tracked code が保持する実行面は secret-free な `.github/workflows/validate.yml` だけです。既存の Tap repository settings には source Reader secret 3件がまだ残っており、このPRでは変更しません。public化前に別の明示承認で削除し、0件をread backする必要があります。次の capability は private [`zoe-llc/crewcli-distribution`](https://github.com/zoe-llc/crewcli-distribution) が所有します。
+tracked code が保持する実行面は secret-free な `.github/workflows/validate.yml` だけで、repository secret は 0 件です。次の capability は private [`zoe-llc/crewent-distribution`](https://github.com/zoe-llc/crewent-distribution) が所有します。
 
 - private source Release の読み取り
 - 3 target bottle の build と private GHCR publish
@@ -26,4 +26,4 @@ actionlint
 git diff --check
 ```
 
-認証境界と将来の利用手順は [Public Tap / private GHCR access](docs/operations/public-tap-private-ghcr.md)、canary と promotion の所有権は [運用手順](docs/operations/canary-and-promotion.md)、名称変更は [Rename](docs/operations/rename.md)、復旧は [Rollback](docs/operations/rollback.md) を参照してください。実 Activation の未達条件は [consumer activation evidence](docs/verification/consumer-activation.md) にあります。
+認証境界と将来の利用手順は [Public Tap / private GHCR access](docs/operations/public-tap-private-ghcr.md)、canary と promotion の所有権は [運用手順](docs/operations/canary-and-promotion.md)、復旧は [Rollback](docs/operations/rollback.md) を参照してください。実 Activation の未達条件は [consumer activation evidence](docs/verification/consumer-activation.md) にあります。

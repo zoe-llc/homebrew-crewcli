@@ -2,7 +2,7 @@
 
 ## 所有権と状態
 
-canary と promotion workflow の正本は private [`zoe-llc/crewcli-distribution`](https://github.com/zoe-llc/crewcli-distribution) です。public Tap は workflow、secret、private artifact、package permission を持ちません。
+canary と promotion workflow の正本は private [`zoe-llc/crewent-distribution`](https://github.com/zoe-llc/crewent-distribution) です。public Tap は workflow、secret、private artifact、package permission を持ちません。
 
 2026-10-17 時点では workflow 契約だけが準備済みです。Tap は private のままで、旧source Reader secret 3件もsettingsに残っています。source Release、private GHCR bottle、candidate PR、実 canary、stable promotion は未実行です。secret削除とautomation側へのcredential設定は、別の明示承認まで行いません。
 

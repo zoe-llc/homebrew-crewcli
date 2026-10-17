@@ -13,7 +13,7 @@
 ## 初回提供前または初回canary失敗
 
 stable Formulaを提供状態へ進めない。端末上の候補を`brew uninstall crewent`で削除し、必要なら
-`brew untap zoe-llc/crewcli`する。まだ直前stableがないため、rollback pointは「未提供状態」である。
+`brew untap zoe-llc/crewent`する。まだ直前stableがないため、rollback pointは「未提供状態」である。
 
 ## 2版目以降
 
@@ -25,10 +25,10 @@ stable Formulaを提供状態へ進めない。端末上の候補を`brew uninst
 
 ```sh
 brew update
-brew reinstall zoe-llc/crewcli/crewent
+brew reinstall zoe-llc/crewent/crewent
 crewent --version
 crewent --help
-crewcli --version
+crewent --version
 ```
 
 5. uninstall、reinstall、clean rollbackを再確認し、3環境が揃った時点で配布rollbackを完了とする。
@@ -37,7 +37,7 @@ crewcli --version
 一部環境だけをpromoteまたはrollbackしてはならない。bottle欠落やdigest driftがある場合はsource fallbackへ
 切り替えず、stableを直前verified commitへ戻す。
 
-実行中の候補で失敗した場合は、`brew uninstall crewent`と`brew untap zoe-llc/crewcli`でcleanな
+実行中の候補で失敗した場合は、`brew uninstall crewent`と`brew untap zoe-llc/crewent`でcleanな
 未提供状態へ戻す。失敗runのevidenceを次のrunへ流用せず、新しいbottle / distribution canary run IDと
 source authorizationを使う。
 

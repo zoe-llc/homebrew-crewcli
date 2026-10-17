@@ -86,12 +86,12 @@ class PublicRepositoryPolicyTest < Minitest::Test
     assert_includes smoke, "github.ref == 'refs/heads/main'"
     assert_includes smoke, "github.event.repository.visibility == 'public'"
     refute_includes smoke, "actions/checkout@"
-    assert_includes smoke, "https://api.github.com/repos/zoe-llc/homebrew-crewcli"
+    assert_includes smoke, "https://api.github.com/repos/zoe-llc/homebrew-crewent"
     assert_includes smoke, ".id == 1414534332"
     assert_includes smoke, 'test "$observed_sha" = "$GITHUB_SHA"'
     assert_includes smoke, "git clone --no-tags -c credential.helper="
     assert_includes smoke, 'git -C "$clone_root" checkout --detach "$GITHUB_SHA"'
-    assert_includes smoke, "brew tap zoe-llc/crewcli"
+    assert_includes smoke, "brew tap zoe-llc/crewent"
     assert_includes smoke, "Digest::SHA256.file"
     assert_includes smoke, "env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN"
     assert_includes smoke, "git config --global --unset-all http.https://github.com/.extraheader"

@@ -21,7 +21,7 @@ class FormulaPolicyTest < Minitest::Test
     assert_includes source, "package_root = buildpath"
     refute_includes source, 'buildpath/"package"'
     assert_includes source, 'odie "npm package metadata is missing" unless (package_root/"package.json").file?'
-    assert_includes source, '["crewent", "crewcli"]'
+    assert_includes source, '["crewent"]'
     refute_match(/secrets\.|GH_TOKEN|GITHUB_TOKEN|HOMEBREW_GITHUB_API_TOKEN/, source)
     refute_match(/system\s+['"](?:curl|git|gh)['"]/, source)
   end

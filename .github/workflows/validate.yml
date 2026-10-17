@@ -34,7 +34,7 @@ jobs:
 
       - name: Run the Formula-only repository contracts
         run: |
-          ruby -Itest test/formula_renames_test.rb
+          ruby -Itest test/compatibility_metadata_test.rb
           ruby -Itest test/formula_policy_test.rb
           ruby -Itest test/public_repository_policy_test.rb
 
@@ -54,7 +54,7 @@ jobs:
       - name: Check Formula style and policy
         run: |
           brew style Formula/crewent.rb
-          brew audit --formula --strict zoe-llc/crewcli/crewent
+          brew audit --formula --strict zoe-llc/crewent/crewent
 
   public-tap-smoke:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.event.repository.visibility == 'public'
@@ -75,39 +75,39 @@ jobs:
           curl --fail --silent --show-error \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/zoe-llc/homebrew-crewcli \
+            https://api.github.com/repos/zoe-llc/homebrew-crewent \
             > "$RUNNER_TEMP/public-tap.json"
-          jq -e '.id == 1414534332 and .full_name == "zoe-llc/homebrew-crewcli" and .visibility == "public" and .default_branch == "main"' \
+          jq -e '.id == 1414534332 and .full_name == "zoe-llc/homebrew-crewent" and .visibility == "public" and .default_branch == "main"' \
             "$RUNNER_TEMP/public-tap.json"
           curl --fail --silent --show-error \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/zoe-llc/homebrew-crewcli/commits/main \
+            https://api.github.com/repos/zoe-llc/homebrew-crewent/commits/main \
             > "$RUNNER_TEMP/public-main.json"
           observed_sha="$(jq -r .sha "$RUNNER_TEMP/public-main.json")"
           test "$observed_sha" = "$GITHUB_SHA"
           curl --fail --silent --show-error \
-            "https://raw.githubusercontent.com/zoe-llc/homebrew-crewcli/${GITHUB_SHA}/Formula/crewent.rb" \
+            "https://raw.githubusercontent.com/zoe-llc/homebrew-crewent/${GITHUB_SHA}/Formula/crewent.rb" \
             > "$RUNNER_TEMP/expected-crewent.rb"
           expected_formula_sha256="$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$RUNNER_TEMP/expected-crewent.rb")"
 
           git config --global --unset-all http.https://github.com/.extraheader >/dev/null 2>&1 || true
           test -z "$(git config --global --get-all http.https://github.com/.extraheader || true)"
-          clone_root="$RUNNER_TEMP/homebrew-crewcli"
+          clone_root="$RUNNER_TEMP/homebrew-crewent"
           env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN GIT_TERMINAL_PROMPT=0 \
-            git clone --no-tags -c credential.helper= https://github.com/zoe-llc/homebrew-crewcli.git "$clone_root"
+            git clone --no-tags -c credential.helper= https://github.com/zoe-llc/homebrew-crewent.git "$clone_root"
           git -C "$clone_root" checkout --detach "$GITHUB_SHA"
           test "$(git -C "$clone_root" rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$clone_root/Formula/crewent.rb")" = "$expected_formula_sha256"
 
-          brew untap zoe-llc/crewcli >/dev/null 2>&1 || true
+          brew untap zoe-llc/crewent >/dev/null 2>&1 || true
           env -u GH_TOKEN -u GITHUB_TOKEN -u HOMEBREW_GITHUB_API_TOKEN \
-            GIT_TERMINAL_PROMPT=0 brew tap zoe-llc/crewcli
-          tap_root="$(brew --repository)/Library/Taps/zoe-llc/homebrew-crewcli"
-          test "$(git -C "$tap_root" remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewcli"
+            GIT_TERMINAL_PROMPT=0 brew tap zoe-llc/crewent
+          tap_root="$(brew --repository)/Library/Taps/zoe-llc/homebrew-crewent"
+          test "$(git -C "$tap_root" remote get-url origin)" = "https://github.com/zoe-llc/homebrew-crewent"
           test "$(git -C "$tap_root" rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(ruby -rdigest -e 'puts Digest::SHA256.file(ARGV.fetch(0)).hexdigest' "$tap_root/Formula/crewent.rb")" = "$expected_formula_sha256"
 
       - name: Remove the anonymous Tap clone
         if: always()
-        run: brew untap zoe-llc/crewcli >/dev/null 2>&1 || true
+        run: brew untap zoe-llc/crewent >/dev/null 2>&1 || true

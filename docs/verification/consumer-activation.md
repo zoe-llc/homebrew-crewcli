@@ -6,10 +6,10 @@
 
 ## 準備済みの境界
 
-- public Tap は `Formula/crewent.rb`、`formula_renames.json`、公開文書、secret-free `validate.yml` だけを所有する。
+- public Tap は `Formula/crewent.rb`、公開文書、secret-free `validate.yml` だけを所有し、compatibility Formula / rename metadata を持たない。
 - workflow policy test は追加 workflow、write / package permission、secret参照、artifact transfer、mutationを拒否する。
 - manual public smoke は repository ID、public visibility、default branch、exact main SHA、raw Formula digest、anonymous `git clone --no-tags`、anonymous `brew tap` を検証する。
-- private source read、bottle build / publish、private GHCR read-back、candidate draft PR、3 target distribution canary、final activation検証は private `zoe-llc/crewcli-distribution` が所有する。
+- private source read、bottle build / publish、private GHCR read-back、candidate draft PR、3 target distribution canary、final activation検証は private `zoe-llc/crewent-distribution` が所有する。
 - Tap Publisherとsource Readerは別GitHub Appで、stable PRをworkflowからmergeしない。
 
 ローカル証拠:
@@ -27,8 +27,7 @@ git diff --check
 ## 未実行の外部 gate
 
 - Tap 全履歴・Actions log / artifact・issue / PR・author metadata の公開前監査
-- 旧source Reader repository secret 3件の削除とsecret inventory 0件のread-back
-- repository ID `1414534332`を維持したpublic visibility変更とanonymous read-back
+- repository ID `1414534332`、public visibility、secret inventory 0件の継続read-back
 - source Immutable Release と3 target private GHCR bottle
 - package permission inheritance無効化、private visibility、private automation link、public Tap access不在
 - tag / digest双方のanonymous pull拒否と用途分離したapproved reader成功
